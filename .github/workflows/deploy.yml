@@ -10,11 +10,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Show Branch
+        shell: powershell
+        run: |
+          git branch --show-current
+          git log --oneline -1
+
       - name: Build Frontend
         shell: powershell
         run: |
           cd Frontend
-         npm install --legacy-peer-deps
+          npm install --legacy-peer-deps
           npm run build
 
       - name: Restart Backend
