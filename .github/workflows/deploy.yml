@@ -1,14 +1,23 @@
-name: Test Runner
+name: Deploy Website
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  deploy:
     runs-on: self-hosted
 
     steps:
-      - name: Create Test File
+      - uses: actions/checkout@v4
+
+      - name: Build Frontend
         shell: powershell
         run: |
-          "GitHub Runner Working $(Get-Date)" | Out-File "D:\Website\uat\test.txt"
+          cd Frontend
+          npm install
+          npm run build
+
+      - name: Restart Backend
+        shell: powershell
+        run: |
+          pm2 restart backend
