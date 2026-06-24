@@ -17,6 +17,11 @@ jobs:
           npm install --legacy-peer-deps
           npm run build
 
+      - name: Deploy Frontend to IIS
+        shell: powershell
+        run: |
+          Copy-Item "$env:GITHUB_WORKSPACE\Frontend\dist\*" "D:\Website\uat\uatrsatsang.bharatmentors.com\Frontend\dist\" -Recurse -Force
+
       - name: Restart Backend
         shell: powershell
         run: |
