@@ -14,7 +14,7 @@ jobs:
         shell: powershell
         run: |
           cd Frontend
-          npm install
+         npm install --legacy-peer-deps
           npm run build
 
       - name: Restart Backend
