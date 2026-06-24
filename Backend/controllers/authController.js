@@ -1,18 +1,33 @@
 import { getPool } from "../config/db.js";
-
 import sql from "mssql";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+
+// Robust boolean detection helper for database flags
+const checkBoolean = (val) => {
+  if (val === null || val === undefined) return false;
+  const s = String(val).toLowerCase();
+  return val === true || val === 1 || s === "1" || s === "true" || s === "y";
+};
 
 // User Login
 export const login = async (req, res) => {
   try {
-    const { username, password } = req.body;
+    let { username, password } = req.body;
 
-    if (!username || !password) {
+    // Security Guard: Check for undefined, null, or non-string types
+    if (typeof username !== 'string' || typeof password !== 'string' || !username.trim() || !password.trim()) {
       return res
         .status(400)
-        .json({ success: false, error: "Username and password are required" });
+        .json({ 
+          success: false, 
+          error: "Valid Username and password are required" 
+        });
     }
+
+    // Sanitize inputs
+    username = username.trim();
+    password = password.trim();
 
     // Get SQL Server connection
     const pool = await getPool();
@@ -22,7 +37,7 @@ export const login = async (req, res) => {
       .request()
       .input("username", sql.NVarChar, username)
       .query(
-        `SELECT TOP 1 UserID, UserName, Password, Name, ChkAdmin, CanManageAttendance, CanManageStore FROM MemberDetails WHERE UserName = @username`
+        `SELECT TOP 1 UserID, UserName, Password, Name, ChkAdmin, CanManageAttendance, CanManageStore FROM MemberDetails WHERE UserName = @username OR UID = @username`
       );
 
     if (result.recordset.length === 0) {
@@ -32,31 +47,56 @@ export const login = async (req, res) => {
     }
 
     const user = result.recordset[0];
+    const dbPassword = user.Password.trim();
 
-    // Check password - passwords stored as dates/strings in SQL, do direct comparison
-    const isPasswordValid = password.trim() === user.Password.trim();
+    // SECURE AUTH: Supports both BCrypt and legacy Plain-text with auto-upgrade
+    let isMatch = false;
+    const isHashed = dbPassword.startsWith("$2b$") || dbPassword.startsWith("$2a$");
 
-    if (!isPasswordValid) {
-      return res
-        .status(401)
-        .json({ success: false, error: "Invalid username or password" });
+    if (isHashed) {
+      isMatch = await bcrypt.compare(password, dbPassword);
+    } else {
+      isMatch = password === dbPassword;
+      if (isMatch) {
+        console.log(`🔒 Upgrading password to BCrypt: ${username}`);
+        const newHash = await bcrypt.hash(password, 10);
+        await pool.request()
+          .input("newHash", sql.NVarChar, newHash)
+          .input("uid", sql.Int, user.UserID)
+          .query(`UPDATE MemberDetails SET Password = @newHash WHERE UserID = @uid`);
+      }
     }
 
-    // Login successful
-    const isAdmin = user.ChkAdmin === true || user.ChkAdmin === 1 ? true : false;
-    const canManageAttendance = user.CanManageAttendance === true || user.CanManageAttendance === 1 ? true : false;
-    const canManageStore = user.CanManageStore === true || user.CanManageStore === 1 ? true : false;
+    if (!isMatch) {
+      return res.status(401).json({ success: false, error: "Invalid username or password" });
+    }
+
+    const permissions = {
+      is_admin: checkBoolean(user.ChkAdmin),
+      can_manage_attendance: checkBoolean(user.CanManageAttendance),
+      can_manage_store: checkBoolean(user.CanManageStore)
+    };
+
+    // NO LONGER USING JWT - MOVING TO NORMAL PROCESS
+    // We send UserID as the token to keep it simple
+    const token = jwt.sign(
+      {
+        id: user.UserID,
+        role: permissions.is_admin ? "admin" : "user"
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
     res.json({
       success: true,
       message: "Login successful",
+      token, // Simple UserID instead of JWT
       user: {
         id: user.UserID,
-        name: user.Name.trim(),
-        username: user.UserName.trim(),
-        is_admin: isAdmin,
-        can_manage_attendance: canManageAttendance,
-        can_manage_store: canManageStore,
+        name: (user.Name || "").trim(),
+        username: (user.UserName || "").trim(),
+        ...permissions
       },
     });
   } catch (error) {
@@ -68,13 +108,24 @@ export const login = async (req, res) => {
 // User Signup (if needed)
 export const signup = async (req, res) => {
   try {
-    const { name, username, password } = req.body;
+    let { name, username, password } = req.body;
 
-    if (!name || !username || !password) {
+    // Security Guard: Ensure all inputs are true strings and not empty
+    if (
+      typeof name !== 'string' || 
+      typeof username !== 'string' || 
+      typeof password !== 'string' ||
+      !name.trim() || !username.trim() || !password.trim()
+    ) {
       return res
         .status(400)
-        .json({ success: false, error: "All fields are required" });
+        .json({ success: false, error: "All fields are required and must be valid strings" });
     }
+
+    // Sanitize
+    name = name.trim();
+    username = username.trim();
+    password = password.trim();
 
     const pool = await getPool();
 
@@ -90,14 +141,22 @@ export const signup = async (req, res) => {
         .json({ success: false, error: "Username already exists" });
     }
 
+    // Hash password before saving
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Get next MemberID since it cannot be NULL
+    const nextIdResult = await pool.request().query("SELECT ISNULL(MAX(MemberID), 0) + 1 as nextId FROM MemberDetails");
+    const nextMemberId = nextIdResult.recordset[0].nextId;
+
     // Insert new user
     await pool
       .request()
       .input("name", sql.NVarChar, name)
       .input("username", sql.NVarChar, username)
-      .input("password", sql.NVarChar, password)
+      .input("password", sql.NVarChar, hashedPassword)
+      .input("memberId", sql.Int, nextMemberId)
       .query(
-        `INSERT INTO MemberDetails (Name, UserName, Password, ChkAdmin) VALUES (@name, @username, @password, 0)`
+        `INSERT INTO MemberDetails (Name, UserName, Password, ChkAdmin, MemberID) VALUES (@name, @username, @password, 0, @memberId)`
       );
 
     res.status(201).json({
@@ -128,19 +187,16 @@ export const getUser = async (req, res) => {
     }
 
     const user = result.recordset[0];
-    const isAdmin = user.ChkAdmin === true || user.ChkAdmin === 1 ? true : false;
-    const canManageAttendance = user.CanManageAttendance === true || user.CanManageAttendance === 1 ? true : false;
-    const canManageStore = user.CanManageStore === true || user.CanManageStore === 1 ? true : false;
-
+    
     res.json({
       success: true,
       user: {
         id: user.UserID,
         name: (user.Name || "").trim(),
         username: (user.UserName || "").trim(),
-        is_admin: isAdmin,
-        can_manage_attendance: canManageAttendance,
-        can_manage_store: canManageStore,
+        is_admin: checkBoolean(user.ChkAdmin),
+        can_manage_attendance: checkBoolean(user.CanManageAttendance),
+        can_manage_store: checkBoolean(user.CanManageStore),
       },
     });
   } catch (error) {
@@ -163,7 +219,7 @@ export const checkRole = async (req, res) => {
       .request()
       .input("username", sql.NVarChar, username)
       .query(
-        `SELECT TOP 1 UserID, UserName, ChkAdmin, CanManageAttendance, CanManageStore, Name FROM MemberDetails WHERE UserName = @username`
+        `SELECT TOP 1 UserID, UserName, ChkAdmin, CanManageAttendance, CanManageStore, Name FROM MemberDetails WHERE UserName = @username OR UID = @username`
       );
 
     if (result.recordset.length === 0) {
@@ -171,23 +227,9 @@ export const checkRole = async (req, res) => {
     }
 
     const user = result.recordset[0];
-    const isAdmin = 
-      user.ChkAdmin === true || 
-      user.ChkAdmin === 1 || 
-      user.ChkAdmin === "1" || 
-      String(user.ChkAdmin).toLowerCase() === "true";
-
-    const canManageAttendance = 
-      user.CanManageAttendance === true || 
-      user.CanManageAttendance === 1 || 
-      user.CanManageAttendance === "1" || 
-      String(user.CanManageAttendance).toLowerCase() === "true";
-
-    const canManageStore = 
-      user.CanManageStore === true || 
-      user.CanManageStore === 1 || 
-      user.CanManageStore === "1" || 
-      String(user.CanManageStore).toLowerCase() === "true";
+    const isAdmin = checkBoolean(user.ChkAdmin);
+    const canManageAttendance = checkBoolean(user.CanManageAttendance);
+    const canManageStore = checkBoolean(user.CanManageStore);
 
     res.json({
       success: true,
@@ -237,8 +279,7 @@ export const loginAsMember = async (req, res) => {
     }
 
     const adminUser = adminResult.recordset[0];
-    const isAdmin =
-      adminUser.ChkAdmin === true || adminUser.ChkAdmin === 1 ? true : false;
+    const isAdmin = checkBoolean(adminUser.ChkAdmin);
 
     if (!isAdmin) {
       return res
@@ -261,19 +302,17 @@ export const loginAsMember = async (req, res) => {
     }
 
     const member = memberResult.recordset[0];
-    const canManageAttendance = member.CanManageAttendance === true || member.CanManageAttendance === 1 ? true : false;
-    const canManageStore = member.CanManageStore === true || member.CanManageStore === 1 ? true : false;
-
+    
     res.json({
       success: true,
       message: `Logged in as ${member.Name}`,
       user: {
         id: member.UserID,
-        name: member.Name.trim(),
-        username: member.UserName.trim(),
+        name: (member.Name || "").trim(),
+        username: (member.UserName || "").trim(),
         is_admin: false,
-        can_manage_attendance: canManageAttendance,
-        can_manage_store: canManageStore,
+        can_manage_attendance: checkBoolean(member.CanManageAttendance),
+        can_manage_store: checkBoolean(member.CanManageStore),
         is_impersonating: true,
         original_user_id: adminUser.UserID,
       },
@@ -312,21 +351,17 @@ export const stopImpersonating = async (req, res) => {
     }
 
     const adminUser = adminResult.recordset[0];
-    const isAdmin =
-      adminUser.ChkAdmin === true || adminUser.ChkAdmin === 1 ? true : false;
-    const canManageAttendance = adminUser.CanManageAttendance === true || adminUser.CanManageAttendance === 1 ? true : false;
-    const canManageStore = adminUser.CanManageStore === true || adminUser.CanManageStore === 1 ? true : false;
-
+    
     res.json({
       success: true,
       message: "Returned to admin session",
       user: {
         id: adminUser.UserID,
-        name: adminUser.Name.trim(),
-        username: adminUser.UserName.trim(),
-        is_admin: isAdmin,
-        can_manage_attendance: canManageAttendance,
-        can_manage_store: canManageStore,
+        name: (adminUser.Name || "").trim(),
+        username: (adminUser.UserName || "").trim(),
+        is_admin: checkBoolean(adminUser.ChkAdmin),
+        can_manage_attendance: checkBoolean(adminUser.CanManageAttendance),
+        can_manage_store: checkBoolean(adminUser.CanManageStore),
       },
     });
   } catch (error) {

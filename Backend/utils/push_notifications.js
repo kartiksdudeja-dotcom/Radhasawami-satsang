@@ -1,7 +1,8 @@
 import webpush from "web-push";
 
-// Initialize web-push with VAPID keys
-// Generate keys using: npx web-push generate-vapid-keys
+// ======================================
+// 🔐 INITIALIZE VAPID
+// ======================================
 export const initializePushNotifications = (
   vapidPublicKey,
   vapidPrivateKey,
@@ -9,123 +10,101 @@ export const initializePushNotifications = (
 ) => {
   if (vapidPublicKey && vapidPrivateKey && vapidEmail) {
     webpush.setVapidDetails(vapidEmail, vapidPublicKey, vapidPrivateKey);
-    console.log("✅ Web Push notifications initialized with VAPID keys");
+    console.log("✅ Web Push initialized");
   } else {
-    console.warn(
-      "⚠️ VAPID keys not configured. Push notifications may not work."
-    );
-    console.log("Generate keys with: npx web-push generate-vapid-keys");
+    console.warn("⚠️ Missing VAPID keys");
   }
 };
 
-/**
- * Send push notification to a specific subscription
- * @param {Object} subscription - Push subscription object from client
- * @param {Object} payload - Notification data
- * @returns {Promise}
- */
+// ======================================
+// 📤 SEND SINGLE NOTIFICATION
+// ======================================
 export const sendPushNotification = async (subscription, payload) => {
   try {
-    const options = {
-      TTL: 24 * 60 * 60, // 24 hours
-      headers: {
-        "Content-Type": "application/json",
-      },
-    };
-
     const notificationPayload = JSON.stringify({
-      title: payload.title || "Radha Swami Notification",
-      body: payload.message || payload.body || "New notification",
-      icon: payload.icon || "/logo.png",
-      badge: payload.badge || "/logo.png",
-      tag: payload.tag || "notification",
+      // 🔥 THIS FIXES MOBILE BACKGROUND ISSUE
+      notification: {
+        title: payload.title || "Radha Swami Portal",
+        body: payload.message || payload.body || "New notification",
+        icon: "/icon.png",     // ⚠️ MUST be local
+        badge: "/icon.png",
+        tag: payload.tag || "rs-notification",
+        requireInteraction: true
+      },
+
+      // Optional data
       data: {
         url: payload.url || "/",
         type: payload.type || "general",
-        ...payload.data,
-      },
+        ...payload.data
+      }
     });
+
+    const options = {
+      TTL: 60 * 60 * 24 // 24 hours
+    };
 
     const result = await webpush.sendNotification(
       subscription,
       notificationPayload,
       options
     );
-    console.log("✅ Push notification sent successfully");
-    return { success: true, result };
-  } catch (error) {
-    console.error("❌ Error sending push notification:", error.message);
 
-    // Handle different error types
+    console.log("✅ Push Sent:", result.statusCode);
+    return { success: true };
+
+  } catch (error) {
+    console.error("❌ Push Error:", error.message);
+
     if (error.statusCode === 410 || error.statusCode === 404) {
-      // Subscription is no longer valid, remove it
-      return {
-        success: false,
-        error: "INVALID_SUBSCRIPTION",
-        statusCode: error.statusCode,
-      };
+      return { success: false, invalid: true };
     }
 
     return { success: false, error: error.message };
   }
 };
 
-/**
- * Send batch push notifications
- * @param {Array} subscriptions - Array of subscription objects
- * @param {Object} payload - Notification data
- * @returns {Promise}
- */
+// ======================================
+// 📤 SEND BATCH NOTIFICATIONS
+// ======================================
 export const sendBatchPushNotifications = async (subscriptions, payload) => {
   const results = {
     sent: 0,
     failed: 0,
-    invalid: [],
-    errors: [],
+    invalid: []
   };
 
-  for (const subscription of subscriptions) {
-    try {
-      const result = await sendPushNotification(subscription, payload);
-      if (result.success) {
-        results.sent++;
-      } else if (result.statusCode === 410 || result.statusCode === 404) {
-        results.invalid.push(subscription);
-        results.failed++;
-      } else {
-        results.failed++;
-        results.errors.push({
-          subscription: subscription.endpoint,
-          error: result.error,
-        });
-      }
-    } catch (error) {
+  for (const sub of subscriptions) {
+    const res = await sendPushNotification(sub, payload);
+
+    if (res.success) {
+      results.sent++;
+    } else {
       results.failed++;
-      results.errors.push({
-        subscription: subscription.endpoint,
-        error: error.message,
-      });
+      if (res.invalid) {
+        results.invalid.push(sub);
+      }
     }
   }
 
   console.log(
-    `📊 Batch notification results: ${results.sent} sent, ${results.failed} failed`
+    `📊 Batch: ${results.sent} sent, ${results.failed} failed`
   );
+
   return results;
 };
 
-/**
- * Validate a push subscription
- * @param {Object} subscription - Push subscription object
- * @returns {boolean}
- */
+// ======================================
+// ✅ VALIDATE SUBSCRIPTION
+// ======================================
 export const isValidSubscription = (subscription) => {
-  if (!subscription || typeof subscription !== "object") {
-    return false;
-  }
-
-  const requiredFields = ["endpoint", "keys"];
-  return requiredFields.every((field) => field in subscription);
+  return (
+    subscription &&
+    subscription.endpoint &&
+    subscription.keys &&
+    subscription.keys.p256dh &&
+    subscription.keys.auth
+  );
 };
 
 export default {

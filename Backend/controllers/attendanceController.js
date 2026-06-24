@@ -29,7 +29,13 @@ export const getAllAttendance = async (req, res) => {
         m.Association_member as association_member,
         m.Unit_Member as unit_member
       FROM Attendance a
-      LEFT JOIN MemberDetails m ON a.UserID = m.UserID
+      LEFT JOIN (
+        SELECT UserID, MAX(UID) as UID, MAX(Name) as Name, MAX(Gender) as Gender, 
+               MAX(Status) as Status, MAX(DOB) as DOB, MAX(Branch) as Branch, 
+               MAX(Association_member) as Association_member, MAX(Unit_Member) as Unit_Member
+        FROM MemberDetails 
+        GROUP BY UserID
+      ) m ON a.UserID = m.UserID
       ORDER BY a.Attendance_date DESC, a.Attendance_Id DESC
     `);
 
@@ -96,6 +102,39 @@ export const getAttendanceByDate = async (req, res) => {
   try {
     const pool = await getPool();
     const { date, fromDate, toDate, memberId } = req.query;
+    const requester = req.user;
+
+    // Fetch requester permissions to decide on data isolation
+    const reqPowerResult = await pool.request()
+      .input("reqId", sql.Int, requester.id)
+      .query("SELECT Name, ChkAdmin, CanManageAttendance FROM MemberDetails WHERE UserID = @reqId");
+    
+    const reqData = reqPowerResult.recordset[0];
+    const isPowerUser = reqData?.ChkAdmin || reqData?.CanManageAttendance;
+
+    // Strict Privacy Logic: Non-admins/Non-managers only see their family's attendance
+    let familyRestrictionClause = "";
+    if (!isPowerUser) {
+      const fullName = reqData?.Name || "";
+      const nameParts = fullName.trim().split(/\s+/);
+      const surname = nameParts.length > 1 ? nameParts[nameParts.length - 1] : fullName;
+
+      if (surname) {
+        // Find all family member IDs
+        const familyResult = await pool.request()
+          .input("surname", sql.NVarChar, `%${surname}`)
+          .query("SELECT UserID FROM MemberDetails WHERE Name LIKE @surname");
+        
+        const familyIds = familyResult.recordset.map(r => r.UserID);
+        if (familyIds.length > 0) {
+          familyRestrictionClause = ` AND a.UserID IN (${familyIds.join(",")})`;
+        } else {
+          familyRestrictionClause = ` AND a.UserID = ${requester.id}`; // Fallback to self
+        }
+      } else {
+        familyRestrictionClause = ` AND a.UserID = ${requester.id}`; // Fallback to self
+      }
+    }
 
     // Support both single date and date range
     // Database has mixed formats: DD/MM/YYYY and YYYY-MM-DD
@@ -121,8 +160,14 @@ export const getAttendanceByDate = async (req, res) => {
         m.Association_member as association_member,
         m.Unit_Member as unit_member
       FROM Attendance a
-      LEFT JOIN MemberDetails m ON a.UserID = m.UserID
-      WHERE 1=1`;
+      LEFT JOIN (
+        SELECT UserID, MAX(UID) as UID, MAX(Name) as Name, MAX(Gender) as Gender, 
+               MAX(Status) as Status, MAX(DOB) as DOB, MAX(Branch) as Branch, 
+               MAX(Association_member) as Association_member, MAX(Unit_Member) as Unit_Member
+        FROM MemberDetails 
+        GROUP BY UserID
+      ) m ON a.UserID = m.UserID
+      WHERE 1=1 ${familyRestrictionClause}`;
 
     const request = pool.request();
 

@@ -1,32 +1,25 @@
-const CACHE_NAME = 'rs-portal-v16';
-const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/favicon.ico'
-];
+// Service Worker Version: FINAL FIXED
+const CACHE_NAME = 'rs-portal-v-final';
 
-// Install event - cache resources
+// ==============================
+// INSTALL
+// ==============================
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        return cache.addAll(urlsToCache).catch(err => {
-          console.log('Cache addAll error:', err);
-        });
-      })
-      .then(() => self.skipWaiting())
-  );
+  console.log('👷 SW: Installing...');
+  self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// ==============================
+// ACTIVATE
+// ==============================
 self.addEventListener('activate', event => {
+  console.log('🚀 SW: Activated');
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
+        cacheNames.map(cache => {
+          if (cache !== CACHE_NAME) {
+            return caches.delete(cache);
           }
         })
       );
@@ -34,140 +27,82 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Fetch event - network first, fallback to cache
+// ==============================
+// FETCH (optional basic)
+// ==============================
 self.addEventListener('fetch', event => {
-  // Skip non-GET requests
-  if (event.request.method !== 'GET') {
-    return;
-  }
-
-  // Skip API calls - handle them separately
-  if (event.request.url.includes('/api/')) {
-    event.respondWith(
-      fetch(event.request)
-        .catch(() => {
-          return new Response(JSON.stringify({ error: 'Offline' }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        })
-    );
-    return;
-  }
-
-  // Network first strategy for other resources
-  event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        // Clone the response
-        if (!response || response.status !== 200 || response.type === 'error') {
-          return response;
-        }
-
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME)
-          .then(cache => {
-            cache.put(event.request, responseToCache);
-          });
-
-        return response;
-      })
-      .catch(() => {
-        return caches.match(event.request)
-          .then(response => {
-            return response || new Response('Offline - Resource not available', {
-              status: 503,
-              statusText: 'Service Unavailable',
-              headers: new Headers({
-                'Content-Type': 'text/plain'
-              })
-            });
-          });
-      })
-  );
+  if (event.request.method !== 'GET') return;
 });
 
-// Handle messages from clients
-self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
-
-// 🔔 Push notification event handler
+// ============================================
+// 🔔 PUSH NOTIFICATION (FINAL FIXED)
+// ============================================
 self.addEventListener('push', event => {
-  console.log('📬 Push event received:', event);
+  console.log('📬 Push received');
 
   let data = {
     title: 'Radha Swami Portal',
-    body: 'You have a new notification',
-    icon: '/notification.png',
-    badge: '/notification.png'
+    body: 'New update available',
+    url: '/'
   };
 
-  // Try to parse the push data
-  if (event.data) {
-    try {
-      data = { ...data, ...event.data.json() };
-      console.log('📬 Push data:', data);
-    } catch (e) {
-      console.log('📬 Push text data:', event.data.text());
+  try {
+    if (event.data) {
+      const parsed = event.data.json();
+      data = { ...data, ...parsed };
+    }
+  } catch (e) {
+    if (event.data) {
       data.body = event.data.text();
     }
   }
 
   const options = {
-    body: data.body || data.message || 'New notification',
-    icon: data.icon || '/notification.png',
-    badge: data.badge || '/notification.png',
-    vibrate: [100, 50, 100],
+    body: data.body || 'New message',
+    icon: 'https://cdn-icons-png.flaticon.com/512/1827/1827347.png',
+    badge: 'https://cdn-icons-png.flaticon.com/512/1827/1827347.png',
+    vibrate: [200, 100, 200],
+    tag: 'rs-notification',
+    renotify: true,
+    requireInteraction: false,
     data: {
-      dateOfArrival: Date.now(),
-      url: data.url || '/',
-      ...data
-    },
-    actions: [
-      { action: 'open', title: 'Open' },
-      { action: 'dismiss', title: 'Dismiss' }
-    ],
-    requireInteraction: true
+      url: data.url || '/'
+    }
   };
 
+  // ✅ ONLY ONE waitUntil (CRITICAL FIX)
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    self.registration.showNotification(
+      data.title || 'Radha Swami Portal',
+      options
+    )
   );
 });
 
-// 🔔 Notification click event handler
+// ==============================
+// CLICK HANDLER
+// ==============================
 self.addEventListener('notificationclick', event => {
-  console.log('🔔 Notification clicked:', event);
   event.notification.close();
 
   const urlToOpen = event.notification.data?.url || '/';
 
-  if (event.action === 'dismiss') {
-    return;
-  }
-
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then(windowClients => {
-        // Check if there's already a window/tab open
         for (let client of windowClients) {
-          if (client.url.includes(self.location.origin) && 'focus' in client) {
-            client.navigate(urlToOpen);
+          if (client.url.includes(self.location.origin)) {
             return client.focus();
           }
         }
-        // Open new window if none exists
-        if (clients.openWindow) {
-          return clients.openWindow(urlToOpen);
-        }
+        return clients.openWindow(urlToOpen);
       })
   );
 });
 
-// 🔔 Push subscription change event
+// ==============================
+// SUBSCRIPTION CHANGE
+// ==============================
 self.addEventListener('pushsubscriptionchange', event => {
-  console.log('🔄 Push subscription changed:', event);
-  // Re-subscribe logic can be added here
+  console.log('🔄 Subscription changed');
 });

@@ -7,21 +7,18 @@ import {
   deleteSevaEntry 
 } from '../controllers/sevaController.js';
 
+// ✅ NEW JWT middleware
+import { verifyToken, verifyAdmin, verifyAttendanceManager } from "../middleware/auth.js";
+
 const router = express.Router();
 
-// POST /api/seva - Save seva entry
-router.post('/', saveSevaEntry);
+// 👑 Admin or Attendance Manager (Report access for all or family)
+router.post('/', verifyToken, verifyAdmin, saveSevaEntry);
+router.get('/', verifyToken, verifyAttendanceManager, getAllSevaEntries);
+router.get('/report', verifyToken, getSevaReport); // Privacy handled in controller
+router.delete('/:id', verifyToken, verifyAdmin, deleteSevaEntry);
 
-// GET /api/seva - Get all seva entries
-router.get('/', getAllSevaEntries);
-
-// GET /api/seva/report - Get seva report (members with activities)
-router.get('/report', getSevaReport);
-
-// GET /api/seva/member/:memberId - Get seva entries by member
-router.get('/member/:memberId', getSevaEntriesByMember);
-
-// DELETE /api/seva/:id - Delete seva entry
-router.delete('/:id', deleteSevaEntry);
+// 🔐 Logged-in user (view own or specific member data)
+router.get('/member/:memberId', verifyToken, getSevaEntriesByMember);
 
 export default router;

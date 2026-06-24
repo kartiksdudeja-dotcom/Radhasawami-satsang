@@ -1,8 +1,29 @@
 import React, { useState, useEffect } from "react";
 import "../styles/StoreAdmin.css";
-import { API_BASE_URL } from "../config/apiConfig";
+import { API_BASE_URL, getAuthHeaders, apiFetch } from "../config/apiConfig";
 
-const StoreAdmin = () => {
+const formatImage = (imageData) => {
+  if (!imageData) return "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+  let img = imageData.trim();
+
+  // 🔥 Extract ONLY last valid base64 part
+  if (img.includes("base64,")) {
+    const cleanBase64 = img.split("base64,").pop();
+    return `data:image/jpeg;base64,${cleanBase64}`;
+  }
+
+  // Already correct
+  if (img.startsWith("data:image/")) {
+    return img;
+  }
+
+  // Raw base64
+  return `data:image/jpeg;base64,${img}`;
+};
+
+const StoreAdmin = ({ user: propUser }) => {
+  const user = propUser || JSON.parse(localStorage.getItem("user") || "{}");
   const [activeTab, setActiveTab] = useState("dashboard");
   const [items, setItems] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -23,7 +44,7 @@ const StoreAdmin = () => {
   const [itemImagePreview, setItemImagePreview] = useState(null);
   const [categoryImage, setCategoryImage] = useState(null);
   const [categoryImagePreview, setCategoryImagePreview] = useState(null);
-  
+
   // Search states
   const [itemSearch, setItemSearch] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
@@ -50,6 +71,14 @@ const StoreAdmin = () => {
     fetchOrders();
     fetchSales();
     fetchCategories();
+
+    // ✅ AUTO-SYNC: Refresh data every 30 seconds silently
+    const syncInterval = setInterval(() => {
+      fetchItems(true);
+      fetchOrders();
+    }, 30000);
+
+    return () => clearInterval(syncInterval);
   }, []);
 
   const showNotification = (message, type = "success") => {
@@ -57,89 +86,96 @@ const StoreAdmin = () => {
     setTimeout(() => setNotification(null), 3000);
   };
 
-  const fetchItems = async () => {
+  const fetchItems = async (isSilent = false) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/store/items`);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
+      if (!isSilent) setLoading(true);
+      const timestamp = new Date().getTime();
+      const data = await apiFetch(`/api/store/items?t=${timestamp}`);
+
+      if (data && data.success && Array.isArray(data.data)) {
         setItems(data.data);
+        console.log(`📦 Admin: Fetched ${data.data.length} items from server`);
       }
     } catch (error) {
       console.error("Error fetching items:", error);
       showNotification("Failed to load items", "error");
+    } finally {
+      if (!isSilent) setLoading(false);
     }
-    setLoading(false);
   };
 
-  const fetchOrders = async () => {
+  const fetchOrders = async (isSilent = false) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/store/orders`);
-      const data = await res.json();
-      console.log("📦 Raw API response:", data);
-      
-      if (data.success && Array.isArray(data.data)) {
-        // Deduplicate orders by OrderID (in case backend returns duplicates)
+      if (!isSilent) setLoading(true);
+      const timestamp = new Date().getTime();
+      const data = await apiFetch(`/api/store/orders?t=${timestamp}`);
+
+      if (data && data.success && Array.isArray(data.data)) {
+        // Deduplicate orders by OrderID
         const uniqueOrdersMap = {};
-        data.data.forEach(order => {
-          if (!uniqueOrdersMap[order.OrderID] || 
-              !uniqueOrdersMap[order.OrderID].Items || 
-              uniqueOrdersMap[order.OrderID].Items.length === 0) {
+        data.data.forEach((order) => {
+          if (
+            !uniqueOrdersMap[order.OrderID] ||
+            !uniqueOrdersMap[order.OrderID].Items ||
+            uniqueOrdersMap[order.OrderID].Items.length === 0
+          ) {
             uniqueOrdersMap[order.OrderID] = order;
           }
         });
-        
+
         const uniqueOrders = Object.values(uniqueOrdersMap);
         setOrders(uniqueOrders);
-        console.log(`✅ Loaded ${uniqueOrders.length} unique orders (from ${data.data.length} total rows)`);
-        console.log("🔍 Sample order:", uniqueOrders[0]);
+        console.log(`✅ Loaded ${uniqueOrders.length} unique orders`);
       }
     } catch (error) {
       console.error("Error fetching orders:", error);
+    } finally {
+      if (!isSilent) setLoading(false);
     }
   };
 
-  const fetchSales = async () => {
+  const fetchSales = async (isSilent = false) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/store/sales`);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
-        // Deduplicate sales by SaleID
+      if (!isSilent) setLoading(true);
+      const data = await apiFetch("/api/store/sales");
+
+      if (data && data.success && Array.isArray(data.data)) {
+        // Remove duplicates if any
         const uniqueSales = [];
         const seenSaleIds = new Set();
         for (const sale of data.data) {
-          if (!seenSaleIds.has(sale.SaleID)) {
+          if (sale.SaleID && !seenSaleIds.has(sale.SaleID)) {
             uniqueSales.push(sale);
             seenSaleIds.add(sale.SaleID);
           }
         }
         setSales(uniqueSales);
-        console.log(
-          `Loaded ${uniqueSales.length} unique sales (${data.data.length} total records)`
-        );
+        console.log(`✅ Loaded ${uniqueSales.length} unique sales`);
       }
     } catch (error) {
       console.error("Error fetching sales:", error);
+    } finally {
+      if (!isSilent) setLoading(false);
     }
   };
 
   const fetchCategories = async () => {
     try {
       // Fetch categories from database
-      const res = await fetch(`${API_BASE_URL}/api/store/categories`);
-      const data = await res.json();
-      
-      if (data.success && Array.isArray(data.data)) {
+      const data = await apiFetch("/api/store/categories");
+
+      if (data && data.success && Array.isArray(data.data)) {
         setCategories(data.data);
         console.log(`✅ Loaded ${data.data.length} categories from database`);
       } else {
         // Fallback: Get unique categories from items if API fails
         const uniqueCategories = {};
-        items.forEach(item => {
+        items.forEach((item) => {
           if (item.Category && !uniqueCategories[item.Category]) {
             uniqueCategories[item.Category] = {
               CategoryName: item.Category,
               ItemCount: 1,
-              Icon: "📦"
+              Icon: "📦",
             };
           } else if (item.Category) {
             uniqueCategories[item.Category].ItemCount += 1;
@@ -157,8 +193,8 @@ const StoreAdmin = () => {
     e.preventDefault();
     try {
       const url = editItem
-        ? `${API_BASE_URL}/api/store/items/${editItem.ItemID}`
-        : `${API_BASE_URL}/api/store/items`;
+        ? `/api/store/items/${editItem.ItemID}`
+        : "/api/store/items";
       const method = editItem ? "PUT" : "POST";
 
       // Handle new category creation
@@ -167,14 +203,13 @@ const StoreAdmin = () => {
         categoryName = itemForm.NewCategory;
         // Create the new category first
         try {
-          await fetch(`${API_BASE_URL}/api/store/categories`, {
+          await apiFetch("/api/store/categories", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+            body: {
               CategoryName: categoryName,
               CategoryIcon: "📦",
               Description: "",
-            }),
+            },
           });
           fetchCategories(); // Refresh categories list
         } catch (err) {
@@ -191,30 +226,23 @@ const StoreAdmin = () => {
       };
       delete payload.NewCategory; // Remove helper field
 
-      // Add image data if it exists (remove "data:image/jpeg;base64," prefix for storage)
+      // Add image data if it exists (correctly extract raw base64)
       if (itemImage) {
-        const base64Data = itemImage.split(",")[1] || itemImage;
+        const base64Data = itemImage.includes("base64,") ? itemImage.split("base64,").pop() : itemImage;
         payload.ImageData = base64Data;
         console.log("📸 Uploading item with image:", payload.ItemName);
       }
 
-      const res = await fetch(url, {
+      const data = await apiFetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: payload,
       });
 
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-
-      const data = await res.json();
-
-      if (data.success) {
+      if (data && data.success) {
         showNotification(editItem ? "✓ Item updated!" : "✓ Item created!");
         fetchItems();
         closeModal();
-      } else {
+      } else if (data) {
         showNotification(data.error || "Failed to save item", "error");
       }
     } catch (error) {
@@ -226,10 +254,10 @@ const StoreAdmin = () => {
   const deleteStoreItem = async (id) => {
     if (!window.confirm("Delete this item?")) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/store/items/${id}`, {
+      const result = await apiFetch(`/api/store/items/${id}`, {
         method: "DELETE",
       });
-      if (res.ok) {
+      if (result && result.success) {
         showNotification("✓ Item deleted!");
         fetchItems();
       }
@@ -240,29 +268,28 @@ const StoreAdmin = () => {
 
   const updateOrderStatus = async (orderId, status) => {
     try {
-      const order = orders.find(o => o.OrderID === orderId);
-      
-      const res = await fetch(
-        `${API_BASE_URL}/api/store/orders/${orderId}/status`,
+      const order = orders.find((o) => o.OrderID === orderId);
+
+      const result = await apiFetch(
+        `/api/store/orders/${orderId}/status`,
         {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ Status: status }),
-        }
+          body: { Status: status },
+        },
       );
-      
-      if (res.ok) {
+
+      if (result && result.success) {
         showNotification("✓ Order status updated!");
-        
+
         // Send notification to member if order is Ready
         if (status === "Ready") {
           await sendOrderNotification(orderId, order?.MemberName, "ready");
         }
-        
+
         // If order is Delivered, create a sales record
         if (status === "Delivered") {
           await sendOrderNotification(orderId, order?.MemberName, "delivered");
-          
+
           // Create sales record
           if (order && order.Items && order.Items.length > 0) {
             try {
@@ -274,14 +301,13 @@ const StoreAdmin = () => {
                 Items: order.Items,
                 SaleDate: new Date().toISOString(),
               };
-              
-              const saleRes = await fetch(`${API_BASE_URL}/api/store/sales`, {
+
+              const result = await apiFetch("/api/store/sales", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(saleData),
+                body: saleData,
               });
-              
-              if (saleRes.ok) {
+
+              if (result && result.success) {
                 console.log("✓ Sales record created for delivered order");
                 await fetchSales();
               }
@@ -290,7 +316,7 @@ const StoreAdmin = () => {
             }
           }
         }
-        
+
         fetchOrders();
       }
     } catch (error) {
@@ -299,22 +325,30 @@ const StoreAdmin = () => {
   };
 
   const deleteOrderHandler = async (orderId) => {
-    if (!window.confirm(`Are you sure you want to delete Order #${orderId}? This will restore inventory quantities.`)) {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete Order #${orderId}? This will restore inventory quantities.`,
+      )
+    ) {
       return;
     }
 
     try {
       // First remove from UI immediately for better UX
-      const updatedOrders = orders.filter(order => order.OrderID !== orderId);
+      const updatedOrders = orders.filter((order) => order.OrderID !== orderId);
       setOrders(updatedOrders);
-      
-      const res = await fetch(
-        `${API_BASE_URL}/api/store/orders/${orderId}`,
-        { method: "DELETE" }
+
+      const result = await apiFetch(
+        `/api/store/orders/${orderId}`,
+        {
+          method: "DELETE",
+        },
       );
 
-      if (res.ok) {
-        showNotification("✓ Order deleted successfully and inventory restored!");
+      if (result && result.success) {
+        showNotification(
+          "✓ Order deleted successfully and inventory restored!",
+        );
         // Refresh from database to confirm deletion
         fetchOrders();
       } else {
@@ -336,15 +370,17 @@ const StoreAdmin = () => {
     }
 
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/api/store/sales/${saleId}`,
-        { method: "DELETE" }
+      const result = await apiFetch(
+        `/api/store/sales/${saleId}`,
+        {
+          method: "DELETE",
+        },
       );
 
-      if (res.ok) {
+      if (result && result.success) {
         showNotification("✓ Sale deleted successfully!");
         fetchSales();
-      } else {
+      } else if (result) {
         showNotification("Failed to delete sale", "error");
       }
     } catch (error) {
@@ -366,16 +402,15 @@ const StoreAdmin = () => {
     }
 
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/api/store/orders/${editOrder.OrderID}/status`,
+      const result = await apiFetch(
+        `/api/store/orders/${editOrder.OrderID}/status`,
         {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ Status: editOrder.Status }),
-        }
+          body: { Status: editOrder.Status },
+        },
       );
 
-      if (res.ok) {
+      if (result && result.success) {
         showNotification("✓ Order status updated successfully!");
         setShowModal(false);
         setEditOrder(null);
@@ -395,14 +430,14 @@ const StoreAdmin = () => {
       setCategoryForm({
         CategoryName: category.CategoryName,
         Description: category.Description || "",
-        CategoryIcon: category.Icon || "📦"
+        CategoryIcon: category.Icon || "📦",
       });
     } else {
       setEditCategory(null);
       setCategoryForm({
         CategoryName: "",
         Description: "",
-        CategoryIcon: "📦"
+        CategoryIcon: "📦",
       });
     }
     setModalType("category");
@@ -418,27 +453,30 @@ const StoreAdmin = () => {
 
     try {
       // Save to database
-      const res = await fetch(`${API_BASE_URL}/api/store/categories`, {
+      const result = await apiFetch("/api/store/categories", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: {
           CategoryName: categoryForm.CategoryName,
           Description: categoryForm.Description,
-          CategoryIcon: categoryForm.CategoryIcon
-        })
+          CategoryIcon: categoryForm.CategoryIcon,
+        },
       });
 
-      const data = await res.json();
-      
-      if (data.success) {
-        showNotification(`✓ Category "${categoryForm.CategoryName}" saved successfully!`);
+      if (result && result.success) {
+        showNotification(
+          `✓ Category "${categoryForm.CategoryName}" saved successfully!`,
+        );
         setShowModal(false);
-        setCategoryForm({ CategoryName: "", Description: "", CategoryIcon: "📦" });
+        setCategoryForm({
+          CategoryName: "",
+          Description: "",
+          CategoryIcon: "📦",
+        });
         setEditCategory(null);
         // Refresh categories from database
         await fetchCategories();
-      } else {
-        showNotification(data.error || "Failed to save category", "error");
+      } else if (result) {
+        showNotification(result.error || "Failed to save category", "error");
       }
     } catch (error) {
       console.error("Error saving category:", error);
@@ -451,13 +489,18 @@ const StoreAdmin = () => {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE_URL}/api/store/categories/${categoryId}`, {
-        method: "DELETE"
-      });
-      if (res.ok) {
-        setCategories(categories.filter(cat => cat.CategoryID !== categoryId));
+      const result = await apiFetch(
+        `/api/store/categories/${categoryId}`,
+        {
+          method: "DELETE",
+        },
+      );
+      if (result && result.success) {
+        setCategories(
+          categories.filter((cat) => cat.CategoryID !== categoryId),
+        );
         showNotification(`✓ Category "${categoryName}" deleted!`);
-      } else {
+      } else if (result) {
         showNotification("Failed to delete category", "error");
       }
     } catch (error) {
@@ -470,13 +513,16 @@ const StoreAdmin = () => {
   const viewCategoryDetails = async (category) => {
     setSelectedCategory(category);
     setShowCategoryDetail(true);
-    // Fetch items for this category from database
     try {
-      const res = await fetch(`${API_BASE_URL}/api/store/categories/${category.CategoryID}/items`);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
-        setCategoryItems(data.data);
-        console.log(`✅ Loaded ${data.data.length} items for category "${category.CategoryName}"`);
+      const result = await apiFetch(
+        `/api/store/categories/${category.CategoryID}/items`,
+      );
+
+      if (result && result.success && Array.isArray(result.data)) {
+        setCategoryItems(result.data);
+        console.log(
+          `✅ Loaded ${result.data.length} items for category "${category.CategoryName}"`,
+        );
       }
     } catch (error) {
       console.error("Error fetching category items:", error);
@@ -487,16 +533,17 @@ const StoreAdmin = () => {
   // Add item to category
   const addItemToCategory = async (itemId, categoryId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/store/categories/items/add`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ItemID: itemId, CategoryID: categoryId })
-      });
-      const data = await res.json();
-      if (data.success) {
+      const result = await apiFetch(
+        "/api/store/categories/items/add",
+        {
+          method: "POST",
+          body: { ItemID: itemId, CategoryID: categoryId },
+        },
+      );
+      if (result && result.success) {
         showNotification("✓ Item added to category!");
-      } else {
-        showNotification(data.message || "Failed to add item", "error");
+      } else if (result) {
+        showNotification(result.message || "Failed to add item", "error");
       }
     } catch (error) {
       showNotification("Failed to add item to category", "error");
@@ -506,13 +553,14 @@ const StoreAdmin = () => {
   // Remove item from category
   const removeItemFromCategory = async (itemId, categoryId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/store/categories/items/remove`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ItemID: itemId, CategoryID: categoryId })
-      });
-      const data = await res.json();
-      if (data.success) {
+      const result = await apiFetch(
+        "/api/store/categories/items/remove",
+        {
+          method: "POST",
+          body: { ItemID: itemId, CategoryID: categoryId },
+        },
+      );
+      if (result && result.success) {
         showNotification("✓ Item removed from category!");
       }
     } catch (error) {
@@ -524,21 +572,21 @@ const StoreAdmin = () => {
     try {
       const messages = {
         ready: `✅ Your order is ready! Please pick up your order from the store.`,
-        delivered: `🎉 Your order has been delivered!`
+        delivered: `🎉 Your order has been delivered!`,
       };
 
-      const res = await fetch(`${API_BASE_URL}/api/notifications`, {
+      const result = await apiFetch("/api/notifications", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: {
           message: messages[type],
           type: "order_" + type,
           orderId: orderId,
-          memberName: memberName
-        })
+          memberName: memberName,
+          is_admin: true,
+        },
       });
 
-      if (res.ok) {
+      if (result && result.success) {
         console.log(`📢 Notification sent to ${memberName}`);
       }
     } catch (error) {
@@ -568,11 +616,15 @@ const StoreAdmin = () => {
               Category: "",
               Price: "",
               Quantity: "",
-            }
+            },
       );
 
       if (item?.ImageData) {
-        setItemImagePreview(`data:image/jpeg;base64,${item.ImageData}`);
+        // Only add prefix if not already present
+        const imageUrl = item.ImageData.startsWith("data:")
+          ? item.ImageData
+          : `data:image/jpeg;base64,${item.ImageData}`;
+        setItemImagePreview(imageUrl);
       }
     }
 
@@ -707,10 +759,23 @@ const StoreAdmin = () => {
         </div>
       )}
 
-      {/* Header */}
       <div className="admin-header">
-        <h1>🏪 Store Management</h1>
-        <p>Manage store items and orders</p>
+        <div className="admin-header-title">
+          <h1>🏪 Store Management</h1>
+          <p>Manage items, orders and sales</p>
+        </div>
+        <button
+          className="admin-refresh-btn"
+          onClick={() => {
+            fetchItems();
+            fetchOrders();
+            fetchSales();
+            showNotification("✓ Data refreshed successfully", "success");
+          }}
+          title="Sync now"
+        >
+          🔄 Sync Now
+        </button>
       </div>
 
       {/* Tabs */}
@@ -790,9 +855,9 @@ const StoreAdmin = () => {
             <div>
               <h2>📦 Store Items</h2>
               <div className="search-bar-mini">
-                <input 
-                  type="text" 
-                  placeholder="🔍 Search items..." 
+                <input
+                  type="text"
+                  placeholder="🔍 Search items..."
                   value={itemSearch}
                   onChange={(e) => setItemSearch(e.target.value)}
                 />
@@ -819,46 +884,54 @@ const StoreAdmin = () => {
               </thead>
               <tbody>
                 {items
-                  .filter(item => 
-                    item.ItemName?.toLowerCase().includes(itemSearch.toLowerCase()) ||
-                    item.Category?.toLowerCase().includes(itemSearch.toLowerCase())
+                  .filter(
+                    (item) =>
+                      item.ItemName?.toLowerCase().includes(
+                        itemSearch.toLowerCase(),
+                      ) ||
+                      item.Category?.toLowerCase().includes(
+                        itemSearch.toLowerCase(),
+                      ),
                   )
                   .map((item) => (
-                  <tr key={item.ItemID}>
-                    <td>{item.ItemID}</td>
-                    <td>
-                      {item.ImageData ? (
+                    <tr key={item.ItemID}>
+                      <td>{item.ItemID}</td>
+                      <td>
                         <img
-                          src={`data:image/jpeg;base64,${item.ImageData}`}
+                          src={formatImage(item.ImageData)}
                           alt={item.ItemName}
                           className="table-thumbnail"
+                          onError={(e) => {
+                            e.target.style.display = "none";
+                            e.target.nextSibling.style.display = "inline";
+                          }}
                         />
-                      ) : (
-                        <span className="no-image">📸</span>
-                      )}
-                    </td>
-                    <td>{item.ItemName}</td>
-                    <td>{item.Category}</td>
-                    <td>₹{item.Price}</td>
-                    <td>
-                      {item.Quantity} {item.Unit}
-                    </td>
-                    <td className="actions-cell">
-                      <button
-                        className="edit-btn"
-                        onClick={() => openModal("item", item)}
-                      >
-                        ✏️
-                      </button>
-                      <button
-                        className="delete-btn"
-                        onClick={() => deleteStoreItem(item.ItemID)}
-                      >
-                        🗑️
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        <span className="no-image" style={{ display: "none" }}>
+                          📸
+                        </span>
+                      </td>
+                      <td>{item.ItemName}</td>
+                      <td>{item.Category}</td>
+                      <td>₹{item.Price}</td>
+                      <td>
+                        {item.Quantity} {item.Unit}
+                      </td>
+                      <td className="actions-cell">
+                        <button
+                          className="edit-btn"
+                          onClick={() => openModal("item", item)}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          className="delete-btn"
+                          onClick={() => deleteStoreItem(item.ItemID)}
+                        >
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
@@ -867,61 +940,68 @@ const StoreAdmin = () => {
           <div className="items-cards-container items-table-mobile">
             {items.length > 0 ? (
               items
-                .filter(item => 
-                  item.ItemName?.toLowerCase().includes(itemSearch.toLowerCase()) ||
-                  item.Category?.toLowerCase().includes(itemSearch.toLowerCase())
+                .filter(
+                  (item) =>
+                    item.ItemName?.toLowerCase().includes(
+                      itemSearch.toLowerCase(),
+                    ) ||
+                    item.Category?.toLowerCase().includes(
+                      itemSearch.toLowerCase(),
+                    ),
                 )
                 .map((item) => (
-                <div className="item-card" key={item.ItemID}>
-                  <div className="item-card-header">
-                    <div className="item-image-wrapper">
-                      {item.ImageData ? (
-                        <img
-                          src={`data:image/jpeg;base64,${item.ImageData}`}
-                          alt={item.ItemName}
-                          className="item-card-image"
-                        />
-                      ) : (
-                        <span className="item-card-no-image">📸</span>
-                      )}
+                  <div className="item-card" key={item.ItemID}>
+                    <div className="item-card-header">
+                      <div className="item-image-wrapper">
+                        {item.ImageData ? (
+                          <img
+                            src={formatImage(item.ImageData)}
+                            alt={item.ItemName}
+                            className="item-card-image"
+                          />
+                        ) : (
+                          <span className="item-card-no-image">📸</span>
+                        )}
+                      </div>
+                      <div className="item-header-info">
+                        <h3>{item.ItemName}</h3>
+                        <span className="item-id">ID: {item.ItemID}</span>
+                      </div>
                     </div>
-                    <div className="item-header-info">
-                      <h3>{item.ItemName}</h3>
-                      <span className="item-id">ID: {item.ItemID}</span>
-                    </div>
-                  </div>
 
-                  <div className="item-card-body">
-                    <div className="item-field">
-                      <label>🏷️ Category</label>
-                      <span>{item.Category}</span>
+                    <div className="item-card-body">
+                      <div className="item-field">
+                        <label>🏷️ Category</label>
+                        <span>{item.Category}</span>
+                      </div>
+                      <div className="item-field">
+                        <label>💰 Price</label>
+                        <span>₹{item.Price}</span>
+                      </div>
+                      <div className="item-field">
+                        <label>📊 Quantity</label>
+                        <span>
+                          {item.Quantity} {item.Unit || "Unit"}
+                        </span>
+                      </div>
                     </div>
-                    <div className="item-field">
-                      <label>💰 Price</label>
-                      <span>₹{item.Price}</span>
-                    </div>
-                    <div className="item-field">
-                      <label>📊 Quantity</label>
-                      <span>{item.Quantity} {item.Unit || 'Unit'}</span>
-                    </div>
-                  </div>
 
-                  <div className="item-card-actions">
-                    <button 
-                      className="edit-btn-card" 
-                      onClick={() => openModal("item", item)}
-                    >
-                      ✏️ Edit
-                    </button>
-                    <button 
-                      className="delete-btn-card" 
-                      onClick={() => deleteStoreItem(item.ItemID)}
-                    >
-                      🗑️ Delete
-                    </button>
+                    <div className="item-card-actions">
+                      <button
+                        className="edit-btn-card"
+                        onClick={() => openModal("item", item)}
+                      >
+                        ✏️ Edit
+                      </button>
+                      <button
+                        className="delete-btn-card"
+                        onClick={() => deleteStoreItem(item.ItemID)}
+                      >
+                        🗑️ Delete
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))
             ) : (
               <div className="no-orders-card">No items found</div>
             )}
@@ -936,17 +1016,19 @@ const StoreAdmin = () => {
             <div>
               <h2>Orders Management</h2>
               <div className="search-bar-mini">
-                <input 
-                  type="text" 
-                  placeholder="🔍 Search orders by member..." 
+                <input
+                  type="text"
+                  placeholder="🔍 Search orders by member..."
                   value={orderSearch}
                   onChange={(e) => setOrderSearch(e.target.value)}
                 />
               </div>
             </div>
-            <p className="section-subtitle">View and manage all customer orders</p>
+            <p className="section-subtitle">
+              View and manage all customer orders
+            </p>
           </div>
-          
+
           {/* Desktop Table Layout */}
           <div className="data-table orders-table-desktop">
             <table>
@@ -965,28 +1047,150 @@ const StoreAdmin = () => {
               <tbody>
                 {orders.length > 0 ? (
                   orders
-                    .filter(order => 
-                      order.MemberName?.toLowerCase().includes(orderSearch.toLowerCase()) ||
-                      order.OrderID?.toString().includes(orderSearch)
+                    .filter(
+                      (order) =>
+                        order.MemberName?.toLowerCase().includes(
+                          orderSearch.toLowerCase(),
+                        ) || order.OrderID?.toString().includes(orderSearch),
                     )
                     .map((order) => {
-                    const orderItems = order.Items || [];
-                    const productNames = orderItems.map(item => item.ItemName || item.Product || 'N/A').join(', ') || 'N/A';
-                    const quantities = orderItems.map(item => `${item.Quantity}`).join(', ') || 'N/A';
-                    
-                    return (
-                      <tr key={order.OrderID}>
-                        <td>{order.OrderID}</td>
-                        <td>{order.MemberName || `Member ${order.MemberID}`}</td>
-                        <td>{productNames}</td>
-                        <td>{quantities}</td>
-                        <td className="amount">₹{parseFloat(order.TotalAmount).toFixed(2)}</td>
-                        <td>{new Date(order.OrderDate).toLocaleDateString()}</td>
-                        <td>
+                      const orderItems = order.Items || [];
+                      const productNames =
+                        orderItems
+                          .map((item) => item.ItemName || item.Product || "N/A")
+                          .join(", ") || "N/A";
+                      const quantities =
+                        orderItems
+                          .map((item) => `${item.Quantity}`)
+                          .join(", ") || "N/A";
+
+                      return (
+                        <tr key={order.OrderID}>
+                          <td>{order.OrderID}</td>
+                          <td>
+                            {order.MemberName || `Member ${order.MemberID}`}
+                          </td>
+                          <td>{productNames}</td>
+                          <td>{quantities}</td>
+                          <td className="amount">
+                            ₹{parseFloat(order.TotalAmount).toFixed(2)}
+                          </td>
+                          <td>
+                            {order.OrderDate
+                              ? new Date(order.OrderDate).toLocaleString()
+                              : "N/A"}
+                          </td>
+                          <td>
+                            <select
+                              value={order.Status || "Pending"}
+                              onChange={(e) =>
+                                updateOrderStatus(order.OrderID, e.target.value)
+                              }
+                              className="status-select"
+                            >
+                              <option value="Pending">Pending</option>
+                              <option value="Confirmed">Confirmed</option>
+                              <option value="Ready">Ready</option>
+                              <option value="Delivered">Delivered</option>
+                              <option value="Cancelled">Cancelled</option>
+                            </select>
+                          </td>
+                          <td className="actions-cell">
+                            <button
+                              className="edit-btn"
+                              onClick={() => editOrderHandler(order)}
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              className="delete-btn"
+                              onClick={() => deleteOrderHandler(order.OrderID)}
+                            >
+                              🗑️
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                ) : (
+                  <tr>
+                    <td colSpan="8" className="no-data">
+                      No orders found
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Card Layout */}
+          <div className="orders-cards-container orders-table-mobile">
+            {orders.length > 0 ? (
+              orders
+                .filter(
+                  (order) =>
+                    order.MemberName?.toLowerCase().includes(
+                      orderSearch.toLowerCase(),
+                    ) || order.OrderID?.toString().includes(orderSearch),
+                )
+                .map((order) => {
+                  const orderItems = order.Items || [];
+                  const productNames =
+                    orderItems
+                      .map((item) => item.ItemName || item.Product || "N/A")
+                      .join(", ") || "N/A";
+                  const quantities =
+                    orderItems.map((item) => `${item.Quantity}`).join(", ") ||
+                    "N/A";
+
+                  return (
+                    <div className="order-card" key={order.OrderID}>
+                      <div className="order-card-header">
+                        <span className="order-id">Order #{order.OrderID}</span>
+                        <span
+                          className={`order-status-badge ${(order.Status || "Pending").toLowerCase()}`}
+                        >
+                          {order.Status || "Pending"}
+                        </span>
+                      </div>
+
+                      <div className="order-card-body">
+                        <div className="order-field">
+                          <label>👤 Member</label>
+                          <span>
+                            {order.MemberName || `Member ${order.MemberID}`}
+                          </span>
+                        </div>
+                        <div className="order-field">
+                          <label>📦 Products</label>
+                          <span>{productNames}</span>
+                        </div>
+                        <div className="order-field">
+                          <label>🔢 Quantities</label>
+                          <span>{quantities}</span>
+                        </div>
+                        <div className="order-field">
+                          <label>💰 Amount</label>
+                          <span className="amount">
+                            ₹{parseFloat(order.TotalAmount).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="order-field">
+                          <label>📅 Date</label>
+                          <span>
+                            {order.OrderDate
+                              ? new Date(order.OrderDate).toLocaleString()
+                              : "N/A"}
+                          </span>
+                        </div>
+                        <div className="order-field">
+                          <label>📋 Status</label>
                           <select
                             value={order.Status || "Pending"}
-                            onChange={(e) => updateOrderStatus(order.OrderID, e.target.value)}
-                            className="status-select"
+                            onChange={(e) =>
+                              updateOrderStatus(order.OrderID, e.target.value)
+                            }
+                            className="status-select-card"
                           >
                             <option value="Pending">Pending</option>
                             <option value="Confirmed">Confirmed</option>
@@ -994,97 +1198,26 @@ const StoreAdmin = () => {
                             <option value="Delivered">Delivered</option>
                             <option value="Cancelled">Cancelled</option>
                           </select>
-                        </td>
-                        <td className="actions-cell">
-                          <button className="edit-btn" onClick={() => editOrderHandler(order)}>
-                            ✏️
-                          </button>
-                          <button className="delete-btn" onClick={() => deleteOrderHandler(order.OrderID)}>
-                            🗑️
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan="8" className="no-data">No orders found</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          
-          {/* Mobile Card Layout */}
-          <div className="orders-cards-container orders-table-mobile">
-            {orders.length > 0 ? (
-              orders
-                .filter(order => 
-                  order.MemberName?.toLowerCase().includes(orderSearch.toLowerCase()) ||
-                  order.OrderID?.toString().includes(orderSearch)
-                )
-                .map((order) => {
-                const orderItems = order.Items || [];
-                const productNames = orderItems.map(item => item.ItemName || item.Product || 'N/A').join(', ') || 'N/A';
-                const quantities = orderItems.map(item => `${item.Quantity}`).join(', ') || 'N/A';
-                
-                return (
-                  <div className="order-card" key={order.OrderID}>
-                    <div className="order-card-header">
-                      <span className="order-id">Order #{order.OrderID}</span>
-                      <span className={`order-status-badge ${(order.Status || 'Pending').toLowerCase()}`}>
-                        {order.Status || 'Pending'}
-                      </span>
-                    </div>
-                    
-                    <div className="order-card-body">
-                      <div className="order-field">
-                        <label>👤 Member</label>
-                        <span>{order.MemberName || `Member ${order.MemberID}`}</span>
+                        </div>
                       </div>
-                      <div className="order-field">
-                        <label>📦 Products</label>
-                        <span>{productNames}</span>
-                      </div>
-                      <div className="order-field">
-                        <label>🔢 Quantities</label>
-                        <span>{quantities}</span>
-                      </div>
-                      <div className="order-field">
-                        <label>💰 Amount</label>
-                        <span className="amount">₹{parseFloat(order.TotalAmount).toFixed(2)}</span>
-                      </div>
-                      <div className="order-field">
-                        <label>📅 Date</label>
-                        <span>{new Date(order.OrderDate).toLocaleDateString()}</span>
-                      </div>
-                      <div className="order-field">
-                        <label>📋 Status</label>
-                        <select
-                          value={order.Status || "Pending"}
-                          onChange={(e) => updateOrderStatus(order.OrderID, e.target.value)}
-                          className="status-select-card"
+
+                      <div className="order-card-actions">
+                        <button
+                          className="edit-btn-card"
+                          onClick={() => editOrderHandler(order)}
                         >
-                          <option value="Pending">Pending</option>
-                          <option value="Confirmed">Confirmed</option>
-                          <option value="Ready">Ready</option>
-                          <option value="Delivered">Delivered</option>
-                          <option value="Cancelled">Cancelled</option>
-                        </select>
+                          ✏️ Edit
+                        </button>
+                        <button
+                          className="delete-btn-card"
+                          onClick={() => deleteOrderHandler(order.OrderID)}
+                        >
+                          🗑️ Delete
+                        </button>
                       </div>
                     </div>
-                    
-                    <div className="order-card-actions">
-                      <button className="edit-btn-card" onClick={() => editOrderHandler(order)}>
-                        ✏️ Edit
-                      </button>
-                      <button className="delete-btn-card" onClick={() => deleteOrderHandler(order.OrderID)}>
-                        🗑️ Delete
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
+                  );
+                })
             ) : (
               <div className="no-orders-card">No orders found</div>
             )}
@@ -1099,17 +1232,19 @@ const StoreAdmin = () => {
             <div>
               <h2>💳 Sales History</h2>
               <div className="search-bar-mini">
-                <input 
-                  type="text" 
-                  placeholder="🔍 Search sales by item/member..." 
+                <input
+                  type="text"
+                  placeholder="🔍 Search sales by item/member..."
                   value={salesSearch}
                   onChange={(e) => setSalesSearch(e.target.value)}
                 />
               </div>
             </div>
-            <p className="section-subtitle">View all completed sales transactions</p>
+            <p className="section-subtitle">
+              View all completed sales transactions
+            </p>
           </div>
-          
+
           {/* Desktop Table Layout */}
           <div className="data-table sales-table-desktop">
             <table>
@@ -1127,29 +1262,43 @@ const StoreAdmin = () => {
               <tbody>
                 {sales.length > 0 ? (
                   sales
-                    .filter(sale => 
-                      sale.ItemName?.toLowerCase().includes(salesSearch.toLowerCase()) ||
-                      sale.MemberName?.toLowerCase().includes(salesSearch.toLowerCase()) ||
-                      sale.SaleID?.toString().includes(salesSearch)
+                    .filter(
+                      (sale) =>
+                        sale.ItemName?.toLowerCase().includes(
+                          salesSearch.toLowerCase(),
+                        ) ||
+                        sale.MemberName?.toLowerCase().includes(
+                          salesSearch.toLowerCase(),
+                        ) ||
+                        sale.SaleID?.toString().includes(salesSearch),
                     )
                     .map((sale) => (
-                    <tr key={sale.SaleID}>
-                      <td>{sale.SaleID}</td>
-                      <td>{sale.ItemName || `Item ${sale.ItemID}`}</td>
-                      <td>{sale.MemberName || `Member ${sale.MemberID}`}</td>
-                      <td>{sale.Quantity}</td>
-                      <td className="amount">₹{sale.TotalAmount}</td>
-                      <td>{new Date(sale.SaleDate).toLocaleDateString()}</td>
-                      <td className="actions-cell">
-                        <button className="delete-btn" onClick={() => deleteSaleHandler(sale.SaleID)}>
-                          🗑️
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                      <tr key={sale.SaleID}>
+                        <td>{sale.SaleID}</td>
+                        <td>{sale.ItemName || `Item ${sale.ItemID}`}</td>
+                        <td>{sale.MemberName || `Member ${sale.MemberID}`}</td>
+                        <td>{sale.Quantity}</td>
+                        <td className="amount">₹{sale.TotalAmount}</td>
+                        <td>
+                          {sale.SaleDate
+                            ? new Date(sale.SaleDate).toLocaleString()
+                            : "N/A"}
+                        </td>
+                        <td className="actions-cell">
+                          <button
+                            className="delete-btn"
+                            onClick={() => deleteSaleHandler(sale.SaleID)}
+                          >
+                            🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    ))
                 ) : (
                   <tr>
-                    <td colSpan="7" className="no-data">No sales found</td>
+                    <td colSpan="7" className="no-data">
+                      No sales found
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -1160,44 +1309,58 @@ const StoreAdmin = () => {
           <div className="sales-cards-container sales-table-mobile">
             {sales.length > 0 ? (
               sales
-                .filter(sale => 
-                  sale.ItemName?.toLowerCase().includes(salesSearch.toLowerCase()) ||
-                  sale.MemberName?.toLowerCase().includes(salesSearch.toLowerCase()) ||
-                  sale.SaleID?.toString().includes(salesSearch)
+                .filter(
+                  (sale) =>
+                    sale.ItemName?.toLowerCase().includes(
+                      salesSearch.toLowerCase(),
+                    ) ||
+                    sale.MemberName?.toLowerCase().includes(
+                      salesSearch.toLowerCase(),
+                    ) ||
+                    sale.SaleID?.toString().includes(salesSearch),
                 )
                 .map((sale) => (
-                <div className="sale-card" key={sale.SaleID}>
-                  <div className="sale-card-header">
-                    <span className="sale-id">Sale #{sale.SaleID}</span>
-                    <span className="sale-date">{new Date(sale.SaleDate).toLocaleDateString()}</span>
+                  <div className="sale-card" key={sale.SaleID}>
+                    <div className="sale-card-header">
+                      <span className="sale-id">Sale #{sale.SaleID}</span>
+                      <span className="sale-date">
+                        {sale.SaleDate
+                          ? new Date(sale.SaleDate).toLocaleString()
+                          : "N/A"}
+                      </span>
+                    </div>
+
+                    <div className="sale-card-body">
+                      <div className="sale-field">
+                        <label>📦 Item</label>
+                        <span>{sale.ItemName || `Item ${sale.ItemID}`}</span>
+                      </div>
+                      <div className="sale-field">
+                        <label>👤 Member</label>
+                        <span>
+                          {sale.MemberName || `Member ${sale.MemberID}`}
+                        </span>
+                      </div>
+                      <div className="sale-field">
+                        <label>🔢 Quantity</label>
+                        <span>{sale.Quantity}</span>
+                      </div>
+                      <div className="sale-field">
+                        <label>💰 Amount</label>
+                        <span className="amount">₹{sale.TotalAmount}</span>
+                      </div>
+                    </div>
+
+                    <div className="sale-card-actions">
+                      <button
+                        className="delete-btn-card"
+                        onClick={() => deleteSaleHandler(sale.SaleID)}
+                      >
+                        🗑️ Delete Sale
+                      </button>
+                    </div>
                   </div>
-                  
-                  <div className="sale-card-body">
-                    <div className="sale-field">
-                      <label>📦 Item</label>
-                      <span>{sale.ItemName || `Item ${sale.ItemID}`}</span>
-                    </div>
-                    <div className="sale-field">
-                      <label>👤 Member</label>
-                      <span>{sale.MemberName || `Member ${sale.MemberID}`}</span>
-                    </div>
-                    <div className="sale-field">
-                      <label>🔢 Quantity</label>
-                      <span>{sale.Quantity}</span>
-                    </div>
-                    <div className="sale-field">
-                      <label>💰 Amount</label>
-                      <span className="amount">₹{sale.TotalAmount}</span>
-                    </div>
-                  </div>
-                  
-                  <div className="sale-card-actions">
-                    <button className="delete-btn-card" onClick={() => deleteSaleHandler(sale.SaleID)}>
-                      🗑️ Delete Sale
-                    </button>
-                  </div>
-                </div>
-              ))
+                ))
             ) : (
               <div className="no-orders-card">No sales found</div>
             )}
@@ -1212,15 +1375,17 @@ const StoreAdmin = () => {
             <div>
               <h2>📊 Current Inventory</h2>
               <div className="search-bar-mini">
-                <input 
-                  type="text" 
-                  placeholder="🔍 Search inventory..." 
+                <input
+                  type="text"
+                  placeholder="🔍 Search inventory..."
                   value={inventorySearch}
                   onChange={(e) => setInventorySearch(e.target.value)}
                 />
               </div>
             </div>
-            <p className="section-subtitle">Monitor all store item quantities and stock levels</p>
+            <p className="section-subtitle">
+              Monitor all store item quantities and stock levels
+            </p>
           </div>
           <div className="inventory-stats">
             <div className="inventory-stat-card">
@@ -1228,19 +1393,31 @@ const StoreAdmin = () => {
               <span className="stat-label">Total Items</span>
             </div>
             <div className="inventory-stat-card">
-              <span className="stat-number">{items.reduce((sum, item) => sum + (item.Quantity || 0), 0)}</span>
+              <span className="stat-number">
+                {items.reduce((sum, item) => sum + (item.Quantity || 0), 0)}
+              </span>
               <span className="stat-label">Total Units in Stock</span>
             </div>
             <div className="inventory-stat-card low-stock">
-              <span className="stat-number">{items.filter(item => (item.Quantity || 0) < 5).length}</span>
+              <span className="stat-number">
+                {items.filter((item) => (item.Quantity || 0) < 5).length}
+              </span>
               <span className="stat-label">Low Stock Items</span>
             </div>
             <div className="inventory-stat-card">
-              <span className="stat-number">₹{items.reduce((sum, item) => sum + (item.Price * item.Quantity || 0), 0).toFixed(2)}</span>
+              <span className="stat-number">
+                ₹
+                {items
+                  .reduce(
+                    (sum, item) => sum + (item.Price * item.Quantity || 0),
+                    0,
+                  )
+                  .toFixed(2)}
+              </span>
               <span className="stat-label">Total Inventory Value</span>
             </div>
           </div>
-          
+
           {/* Desktop Table View */}
           <div className="data-table inventory-table-desktop">
             <table>
@@ -1257,93 +1434,138 @@ const StoreAdmin = () => {
               <tbody>
                 {items.length > 0 ? (
                   items
-                    .filter(item => 
-                      item.ItemName?.toLowerCase().includes(inventorySearch.toLowerCase()) ||
-                      item.Category?.toLowerCase().includes(inventorySearch.toLowerCase())
+                    .filter(
+                      (item) =>
+                        item.ItemName?.toLowerCase().includes(
+                          inventorySearch.toLowerCase(),
+                        ) ||
+                        item.Category?.toLowerCase().includes(
+                          inventorySearch.toLowerCase(),
+                        ),
                     )
                     .map((item) => {
-                    const qty = item.Quantity || 0;
-                    const stockStatus = qty === 0 ? "Out of Stock" : qty < 5 ? "Low Stock" : "In Stock";
-                    const statusColor = qty === 0 ? "red" : qty < 5 ? "orange" : "green";
-                    
-                    return (
-                      <tr key={item.ItemID}>
-                        <td className="item-name">{item.ItemName}</td>
-                        <td>{item.Category || "N/A"}</td>
-                        <td className="price">₹{parseFloat(item.Price).toFixed(2)}</td>
-                        <td className="quantity">
-                          <span className="qty-badge">{qty} {item.Unit || "Unit"}</span>
-                        </td>
-                        <td>
-                          <span className={`status-badge ${statusColor}`}>
-                            {stockStatus}
-                          </span>
-                        </td>
-                        <td className="total-value">₹{(item.Price * qty).toFixed(2)}</td>
-                      </tr>
-                    );
-                  })
+                      const qty = item.Quantity || 0;
+                      const stockStatus =
+                        qty === 0
+                          ? "Out of Stock"
+                          : qty < 5
+                            ? "Low Stock"
+                            : "In Stock";
+                      const statusColor =
+                        qty === 0 ? "red" : qty < 5 ? "orange" : "green";
+
+                      return (
+                        <tr key={item.ItemID}>
+                          <td className="item-name">{item.ItemName}</td>
+                          <td>{item.Category || "N/A"}</td>
+                          <td className="price">
+                            ₹{parseFloat(item.Price).toFixed(2)}
+                          </td>
+                          <td className="quantity">
+                            <span className="qty-badge">
+                              {qty} {item.Unit || "Unit"}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`status-badge ${statusColor}`}>
+                              {stockStatus}
+                            </span>
+                          </td>
+                          <td className="total-value">
+                            ₹{(item.Price * qty).toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })
                 ) : (
                   <tr>
-                    <td colSpan="6" className="no-data">No items in inventory</td>
+                    <td colSpan="6" className="no-data">
+                      No items in inventory
+                    </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
-          
+
           {/* Mobile Card View */}
           <div className="inventory-cards-container inventory-table-mobile">
             {items.length > 0 ? (
               items
-                .filter(item => 
-                  item.ItemName?.toLowerCase().includes(inventorySearch.toLowerCase()) ||
-                  item.Category?.toLowerCase().includes(inventorySearch.toLowerCase())
+                .filter(
+                  (item) =>
+                    item.ItemName?.toLowerCase().includes(
+                      inventorySearch.toLowerCase(),
+                    ) ||
+                    item.Category?.toLowerCase().includes(
+                      inventorySearch.toLowerCase(),
+                    ),
                 )
                 .map((item) => {
-                const qty = item.Quantity || 0;
-                const stockStatus = qty === 0 ? "Out of Stock" : qty < 5 ? "Low Stock" : "In Stock";
-                const statusColor = qty === 0 ? "out-of-stock" : qty < 5 ? "low-stock" : "in-stock";
-                
-                return (
-                  <div className="inventory-card" key={item.ItemID}>
-                    <div className="inventory-card-header">
-                      <div className="inventory-header-info">
-                        <h3>{item.ItemName}</h3>
-                        <span className="inventory-id">ID: {item.ItemID}</span>
+                  const qty = item.Quantity || 0;
+                  const stockStatus =
+                    qty === 0
+                      ? "Out of Stock"
+                      : qty < 5
+                        ? "Low Stock"
+                        : "In Stock";
+                  const statusColor =
+                    qty === 0
+                      ? "out-of-stock"
+                      : qty < 5
+                        ? "low-stock"
+                        : "in-stock";
+
+                  return (
+                    <div className="inventory-card" key={item.ItemID}>
+                      <div className="inventory-card-header">
+                        <div className="inventory-header-info">
+                          <h3>{item.ItemName}</h3>
+                          <span className="inventory-id">
+                            ID: {item.ItemID}
+                          </span>
+                        </div>
+                        <span
+                          className={`inventory-status-badge ${statusColor}`}
+                        >
+                          {stockStatus}
+                        </span>
                       </div>
-                      <span className={`inventory-status-badge ${statusColor}`}>
-                        {stockStatus}
-                      </span>
+
+                      <div className="inventory-card-body">
+                        <div className="inventory-field">
+                          <label>🏷️ Category</label>
+                          <span>{item.Category || "N/A"}</span>
+                        </div>
+                        <div className="inventory-field">
+                          <label>💰 Unit Price</label>
+                          <span>₹{parseFloat(item.Price).toFixed(2)}</span>
+                        </div>
+                        <div className="inventory-field">
+                          <label>📦 Quantity in Stock</label>
+                          <span className="quantity-highlight">
+                            {qty} {item.Unit || "Unit"}
+                          </span>
+                        </div>
+                        <div className="inventory-field">
+                          <label>💵 Total Value</label>
+                          <span className="value-highlight">
+                            ₹{(item.Price * qty).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="inventory-card-actions">
+                        <button
+                          className="edit-btn-card"
+                          onClick={() => openModal("item", item)}
+                        >
+                          ✏️ Edit Item
+                        </button>
+                      </div>
                     </div>
-                    
-                    <div className="inventory-card-body">
-                      <div className="inventory-field">
-                        <label>🏷️ Category</label>
-                        <span>{item.Category || "N/A"}</span>
-                      </div>
-                      <div className="inventory-field">
-                        <label>💰 Unit Price</label>
-                        <span>₹{parseFloat(item.Price).toFixed(2)}</span>
-                      </div>
-                      <div className="inventory-field">
-                        <label>📦 Quantity in Stock</label>
-                        <span className="quantity-highlight">{qty} {item.Unit || "Unit"}</span>
-                      </div>
-                      <div className="inventory-field">
-                        <label>💵 Total Value</label>
-                        <span className="value-highlight">₹{(item.Price * qty).toFixed(2)}</span>
-                      </div>
-                    </div>
-                    
-                    <div className="inventory-card-actions">
-                      <button className="edit-btn-card" onClick={() => openModal("item", item)}>
-                        ✏️ Edit Item
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
+                  );
+                })
             ) : (
               <div className="no-orders-card">No items in inventory</div>
             )}
@@ -1367,7 +1589,6 @@ const StoreAdmin = () => {
                 ✕
               </button>
             </div>
-
             {modalType === "item" && (
               <form onSubmit={handleItemSubmit} className="modal-form">
                 <div className="form-group">
@@ -1415,7 +1636,10 @@ const StoreAdmin = () => {
                       type="text"
                       value={itemForm.NewCategory || ""}
                       onChange={(e) =>
-                        setItemForm({ ...itemForm, NewCategory: e.target.value })
+                        setItemForm({
+                          ...itemForm,
+                          NewCategory: e.target.value,
+                        })
                       }
                       placeholder="Enter new category name"
                       style={{ marginTop: "8px" }}
@@ -1461,7 +1685,7 @@ const StoreAdmin = () => {
                     {itemImagePreview ? (
                       <div className="image-preview-container">
                         <img
-                          src={itemImagePreview}
+                          src={formatImage(itemImagePreview)}
                           alt="Preview"
                           className="image-preview"
                         />
@@ -1520,7 +1744,6 @@ const StoreAdmin = () => {
                 </div>
               </form>
             )}
-
             {modalType === "editOrder" && editOrder && (
               <form onSubmit={submitEditOrder} className="modal-form">
                 <div className="form-group">
@@ -1610,18 +1833,33 @@ const StoreAdmin = () => {
                 </div>
               </form>
             )}
-
             {modalType === "category" && (
               <form onSubmit={handleCategorySubmit} className="modal-form">
                 <div className="form-group">
                   <label>Category Icon</label>
                   <div className="icon-selector">
-                    {['📦', '🍔', '📚', '🏪', '🎁', '⚡', '🛍️', '🎉', '🌟', '💎'].map(icon => (
+                    {[
+                      "📦",
+                      "🍔",
+                      "📚",
+                      "🏪",
+                      "🎁",
+                      "⚡",
+                      "🛍️",
+                      "🎉",
+                      "🌟",
+                      "💎",
+                    ].map((icon) => (
                       <button
                         key={icon}
                         type="button"
-                        className={`icon-btn ${categoryForm.CategoryIcon === icon ? 'selected' : ''}`}
-                        onClick={() => setCategoryForm({ ...categoryForm, CategoryIcon: icon })}
+                        className={`icon-btn ${categoryForm.CategoryIcon === icon ? "selected" : ""}`}
+                        onClick={() =>
+                          setCategoryForm({
+                            ...categoryForm,
+                            CategoryIcon: icon,
+                          })
+                        }
                       >
                         {icon}
                       </button>
@@ -1635,7 +1873,10 @@ const StoreAdmin = () => {
                     type="text"
                     value={categoryForm.CategoryName}
                     onChange={(e) =>
-                      setCategoryForm({ ...categoryForm, CategoryName: e.target.value })
+                      setCategoryForm({
+                        ...categoryForm,
+                        CategoryName: e.target.value,
+                      })
                     }
                     placeholder="e.g., Books, Grocery, Electronics"
                     required
@@ -1647,7 +1888,10 @@ const StoreAdmin = () => {
                   <textarea
                     value={categoryForm.Description}
                     onChange={(e) =>
-                      setCategoryForm({ ...categoryForm, Description: e.target.value })
+                      setCategoryForm({
+                        ...categoryForm,
+                        Description: e.target.value,
+                      })
                     }
                     placeholder="Brief description of this category"
                     rows="3"
@@ -1667,7 +1911,8 @@ const StoreAdmin = () => {
                   </button>
                 </div>
               </form>
-            )}          </div>
+            )}{" "}
+          </div>
         </div>
       )}
     </div>

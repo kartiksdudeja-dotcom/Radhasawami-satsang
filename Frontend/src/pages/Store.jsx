@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from "react";
 import "../styles/Store.css";
-import { API_BASE_URL } from "../config/apiConfig";
+import { apiFetch } from "../config/apiConfig";
+
+const formatImage = (imageData) => {
+  if (!imageData) return "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+  let img = imageData.trim();
+  if (img.includes("base64,")) {
+    return `data:image/jpeg;base64,${img.split("base64,").pop()}`;
+  }
+  return img.startsWith("data:image/") ? img : `data:image/jpeg;base64,${img}`;
+};
 
 const Store = () => {
   const [items, setItems] = useState([]);
@@ -13,18 +22,15 @@ const Store = () => {
   const [showCheckout, setShowCheckout] = useState(false);
   const [notification, setNotification] = useState(null);
 
-  // Get user from localStorage
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const memberId = user.id || 1;
 
-  // Checkout form state
   const [checkoutForm, setCheckoutForm] = useState({
     deliveryAddress: "",
     deliveryPhone: user.phone || "",
     specialInstructions: "",
   });
 
-  // Fetch items on mount
   useEffect(() => {
     fetchItems();
     fetchCategories();
@@ -37,9 +43,8 @@ const Store = () => {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/store/categories`);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
+      const data = await apiFetch("/api/store/categories");
+      if (data && data.success && Array.isArray(data.data)) {
         setCategories(data.data);
       }
     } catch (error) {
@@ -47,31 +52,16 @@ const Store = () => {
     }
   };
 
-  const fetchItems = async () => {
-    setLoading(true);
+  const fetchItems = async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/store/items`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
+      const timestamp = new Date().getTime();
+      const data = await apiFetch(`/api/store/items?t=${timestamp}`);
+      if (data && data.success && Array.isArray(data.data)) {
         setItems(data.data);
-      } else {
-        console.error("Invalid items response:", data);
-        showNotification("Failed to load items", "error");
       }
     } catch (error) {
       console.error("Error fetching items:", error);
-      showNotification(
-        "Failed to load items. Make sure backend is running.",
-        "error"
-      );
     } finally {
       setLoading(false);
     }
@@ -79,315 +69,187 @@ const Store = () => {
 
   const getFilteredItems = () => {
     let filtered = items;
-    
-    // Filter by selected category
     if (selectedCategory) {
-      filtered = filtered.filter(
-        (item) => item.Category === selectedCategory
-      );
+      filtered = filtered.filter((item) => item.Category?.toLowerCase() === selectedCategory.toLowerCase());
     }
-    
-    // Filter by search query
     if (searchQuery.trim()) {
+      const lower = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (item) =>
-          item.ItemName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.Description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.Category?.toLowerCase().includes(searchQuery.toLowerCase())
+          item.ItemName.toLowerCase().includes(lower) ||
+          item.Description?.toLowerCase().includes(lower)
       );
     }
     return filtered;
   };
 
-  // Get unique categories from items
-  const getUniqueCategories = () => {
-    const uniqueCats = [...new Set(items.map(item => item.Category).filter(Boolean))];
-    return uniqueCats;
-  };
-
-  const searchProducts = () => {
-    // Trigger filter with current search query
-    // This is called when user presses Enter or clicks search button
-  };
-
   const addToCart = (itemId, itemName, price) => {
-    // Check if item is in stock
-    const product = items.find(item => item.ItemID === itemId);
+    const product = items.find((item) => item.ItemID === itemId);
     if (!product || product.Quantity <= 0) {
       showNotification("This item is out of stock!", "error");
       return;
     }
 
-    // Add item to local cart state
-    const existingItem = cart.find((item) => item.ItemID === itemId);
-    if (existingItem) {
-      existingItem.quantity += 1;
-    } else {
-      cart.push({
-        ItemID: itemId,
-        ItemName: itemName,
-        Price: price,
-        quantity: 1,
-      });
-    }
-    setCart([...cart]);
-    showNotification(`✓ Added ${itemName} to cart!`);
+    setCart(prev => {
+      const existing = prev.find(item => item.ItemID === itemId);
+      if (existing) {
+        return prev.map(item => item.ItemID === itemId ? { ...item, quantity: item.quantity + 1 } : item);
+      }
+      return [...prev, { ItemID: itemId, ItemName: itemName, Price: price, ImageData: product.ImageData, quantity: 1 }];
+    });
+    showNotification(`Added ${itemName} to cart!`);
   };
 
   const updateCartItem = (itemId, quantity) => {
     if (quantity < 1) {
-      removeFromCart(itemId);
+      setCart(cart.filter(i => i.ItemID !== itemId));
       return;
     }
-
-    // ✅ NEW: Check if requested quantity exceeds available stock
-    const product = items.find(item => item.ItemID === itemId);
+    const product = items.find(i => i.ItemID === itemId);
     if (product && quantity > product.Quantity) {
-      showNotification(
-        `Only ${product.Quantity} units available. Cannot add more than that!`,
-        "error"
-      );
+      showNotification(`Only ${product.Quantity} units available.`, "error");
       return;
     }
-
-    const item = cart.find((item) => item.ItemID === itemId);
-    if (item) {
-      item.quantity = quantity;
-      setCart([...cart]);
-    }
-  };
-
-  const removeFromCart = (itemId) => {
-    setCart(cart.filter((item) => item.ItemID !== itemId));
-    showNotification("Removed from cart");
+    setCart(cart.map(i => i.ItemID === itemId ? { ...i, quantity } : i));
   };
 
   const calculateCartTotals = () => {
     const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-    const totalPrice = cart.reduce(
-      (sum, item) => sum + item.Price * item.quantity,
-      0
-    );
+    const totalPrice = cart.reduce((sum, item) => sum + item.Price * item.quantity, 0);
     return { totalItems, totalPrice };
   };
 
   const placeOrder = async (e) => {
     e.preventDefault();
-    if (!checkoutForm.deliveryAddress.trim()) {
-      showNotification("Please enter delivery address", "error");
+    if (!checkoutForm.deliveryAddress.trim() || !checkoutForm.deliveryPhone.trim()) {
+      showNotification("Please fill delivery details", "error");
       return;
-    }
-    if (!checkoutForm.deliveryPhone.trim()) {
-      showNotification("Please enter phone number", "error");
-      return;
-    }
-    if (cart.length === 0) {
-      showNotification("Cart is empty", "error");
-      return;
-    }
-
-    // ✅ NEW: Verify stock availability for all items in cart
-    for (const cartItem of cart) {
-      const product = items.find(item => item.ItemID === cartItem.ItemID);
-      if (!product || product.Quantity < cartItem.quantity) {
-        const availableQty = product?.Quantity || 0;
-        showNotification(
-          `❌ "${cartItem.ItemName}" has only ${availableQty} units in stock, but you ordered ${cartItem.quantity}. Please reduce quantity.`,
-          "error"
-        );
-        return;
-      }
     }
 
     try {
+      setLoading(true);
       const { totalPrice } = calculateCartTotals();
-
-      // Format items for API - convert from cart format to order items format
-      const orderItems = cart.map((item) => ({
-        ItemID: item.ItemID,
-        Quantity: item.quantity,
-        UnitPrice: item.Price,
-        TotalPrice: item.Price * item.quantity,
-      }));
-
-      console.log("Placing order with payload:", {
+      const orderPayload = {
         MemberID: memberId,
+        MemberName: user.name || "Member",
         TotalAmount: totalPrice,
         Status: "Pending",
-        Items: orderItems,
+        Items: cart.map(item => ({
+          ItemID: item.ItemID,
+          ItemName: item.ItemName,
+          Quantity: item.quantity,
+          Price: item.Price,
+          Subtotal: item.Price * item.quantity,
+        })),
         DeliveryAddress: checkoutForm.deliveryAddress,
         DeliveryPhone: checkoutForm.deliveryPhone,
         Notes: checkoutForm.specialInstructions,
-      });
+      };
 
-      const res = await fetch(`${API_BASE_URL}/api/store/orders`, {
+      const result = await apiFetch("/api/store/orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          MemberID: memberId,
-          TotalAmount: totalPrice,
-          Status: "Pending",
-          Items: orderItems,
-          DeliveryAddress: checkoutForm.deliveryAddress,
-          DeliveryPhone: checkoutForm.deliveryPhone,
-          Notes: checkoutForm.specialInstructions,
-        }),
+        body: orderPayload,
       });
 
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-
-      const data = await res.json();
-      console.log("Order response:", data);
-
-      if (data.success) {
-        showNotification(
-          `✓ Order placed successfully! Order #${
-            data.OrderNumber || data.OrderID
-          }`
-        );
+      if (result && result.success) {
+        showNotification("Order placed successfully!");
+        setCart([]);
         setShowCheckout(false);
         setShowCart(false);
-        setCart([]);
-        setCheckoutForm({
-          deliveryAddress: "",
-          deliveryPhone: user.phone || "",
-          specialInstructions: "",
-        });
-        
-        // Refetch items to update inventory display
-        fetchItems();
-        
-        // Refresh items to show updated quantities
-        setTimeout(() => {
-          fetchItems();
-        }, 500);
-      } else {
-        showNotification(data.error || "Failed to place order", "error");
+        fetchItems(true);
       }
     } catch (error) {
-      console.error("Error placing order:", error);
-      showNotification("Failed to place order: " + error.message, "error");
+      showNotification("Order failed", "error");
+    } finally {
+      setLoading(false);
     }
   };
 
+  const { totalItems, totalPrice } = calculateCartTotals();
+
   return (
-    <div className="store-container">
-      {/* Notification */}
+    <div className="store-view">
       {notification && (
-        <div className={`store-notification ${notification.type}`}>
-          {notification.type === 'success' ? '✅' : '❌'} {notification.message}
+        <div className={`store-toast ${notification.type}`}>
+          {notification.message}
         </div>
       )}
 
-      {/* Header Section */}
-      <div className="store-header">
-        <div className="store-header-left">
-          <h1>🛍️ RS Store</h1>
-          <p>Premium spiritual essentials for your journey</p>
+      {/* Modern Search & Filters */}
+      <div className="store-header-fixed">
+        <div className="location-bar">
+          <div className="brand-group">
+            <h1 className="hindi-store-title">सत्संग स्टोर</h1>
+          </div>
         </div>
-        <div className="store-header-right">
-          <div className="search-box">
-            <input
-              type="text"
-              placeholder="Search products..."
+
+        <div className="search-container">
+          <div className="search-inner">
+            <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="2.5" strokeLinecap="round"/></svg>
+            <input 
+              type="text" 
+              placeholder="Search for groceries or snacks..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && searchProducts()}
             />
-            <button onClick={searchProducts}>🔍</button>
           </div>
-          <button className="cart-btn" onClick={() => setShowCart(true)}>
-            <span>🛒 My Cart</span>
-            {calculateCartTotals().totalItems > 0 && (
-              <span className="cart-badge">
-                {calculateCartTotals().totalItems}
-              </span>
-            )}
+        </div>
+
+        <div className="categories-pills">
+          <button 
+            className={`pill ${selectedCategory === null ? 'active' : ''}`}
+            onClick={() => setSelectedCategory(null)}
+          >
+            ALL ITEMS
           </button>
+          {(categories.length > 0 
+            ? categories.map(c => typeof c === 'string' ? c : c.CategoryName)
+            : [...new Set(items.map(item => item.Category).filter(Boolean))]
+          ).map(cat => (
+            <button 
+              key={cat}
+              className={`pill ${selectedCategory?.toLowerCase() === cat.toLowerCase() ? 'active' : ''}`}
+              onClick={() => setSelectedCategory(cat)}
+            >
+              {cat.toUpperCase()}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Category Tabs */}
-      <div className="category-tabs">
-        <button
-          className={`category-tab ${selectedCategory === null ? "active" : ""}`}
-          onClick={() => setSelectedCategory(null)}
-        >
-          🏠 All Items
-        </button>
-        {getUniqueCategories().map((cat) => (
-          <button
-            key={cat}
-            className={`category-tab ${selectedCategory === cat ? "active" : ""}`}
-            onClick={() => setSelectedCategory(cat)}
-          >
-            📦 {cat}
-          </button>
-        ))}
-      </div>
-
-      {/* Items Grid */}
-      <div className="products-section">
+      {/* Grid */}
+      <div className="store-content">
         {loading ? (
-          <div className="loading-spinner">
-             <div className="spinner"></div>
-             <span>Loading spiritual items...</span>
-          </div>
+          <div className="store-loading">Loading items...</div>
         ) : getFilteredItems().length === 0 ? (
-          <div className="no-products">
-            <div className="no-products-icon">🔍</div>
-            <p>
-              {selectedCategory 
-                ? `No items found in "${selectedCategory}" category` 
-                : "No items match your search"}
-            </p>
-          </div>
+          <div className="store-empty">No items found</div>
         ) : (
-          <div className="products-grid">
-            {getFilteredItems().map((item) => (
-              <div key={item.ItemID} className="product-card">
-                <div className="product-image">
-                  {item.ImageData ? (
-                    <img
-                      src={`data:image/jpeg;base64,${item.ImageData}`}
-                      alt={item.ItemName}
-                      className="product-img"
-                    />
-                  ) : (
-                    <div className="product-placeholder">📦</div>
-                  )}
+          <div className="items-grid">
+            {getFilteredItems().map(item => (
+              <div key={item.ItemID} className="item-card">
+                <div className="item-image-box">
+                  <img src={formatImage(item.ImageData)} alt={item.ItemName} />
+                  <div className="price-badge">₹{item.Price}</div>
                 </div>
-                <div className="product-info">
-                  <h3>{item.ItemName}</h3>
-                  <p className="product-desc">
-                    {item.Description || "Quality spiritual item for your daily practice."}
-                  </p>
-                  <div className="product-price">
-                    <span className="current-price">₹{item.Price}</span>
-                  </div>
-                  <div className="product-stock">
+                <div className="item-details">
+                  <h3 className="item-title">{item.ItemName}</h3>
+                  <p className="item-subtitle">{item.Description || "Quality item"}</p>
+                  <div className="stock-info">
                     {item.Quantity > 0 ? (
-                      <span className="in-stock">
-                        🟢 {item.Quantity} in stock
+                      <span className="stock-count">
+                        <span className="dot"></span> {item.Quantity} {item.Unit || "pcs"} available
                       </span>
                     ) : (
-                      <span className="out-stock">🔴 Out of Stock</span>
+                      <span className="out-of-stock">Out of stock</span>
                     )}
                   </div>
-                  <button
-                    className="add-to-cart-btn"
-                    onClick={() =>
-                      addToCart(item.ItemID, item.ItemName, item.Price)
-                    }
+                  <button 
+                    className="add-btn"
+                    onClick={() => addToCart(item.ItemID, item.ItemName, item.Price)}
                     disabled={item.Quantity <= 0}
                   >
-                    {item.Quantity > 0 ? (
-                      <><span>+</span> Add to Cart</>
-                    ) : (
-                      "Notify Me"
-                    )}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    {item.Quantity > 0 ? "ADD TO CART" : "OUT OF STOCK"}
                   </button>
                 </div>
               </div>
@@ -396,201 +258,139 @@ const Store = () => {
         )}
       </div>
 
-      {/* Cart Sidebar */}
+      {/* Floating Cart Button */}
+      {totalItems > 0 && (
+        <button className="floating-cart" onClick={() => setShowCart(true)}>
+          <div className="cart-left">
+            <div className="cart-count-badge">{totalItems}</div>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="24"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" strokeWidth="2.5"/></svg>
+          </div>
+          <div className="cart-right">
+            <span className="label">CART TOTAL</span>
+            <span className="amount">₹{totalPrice.toLocaleString()}</span>
+          </div>
+        </button>
+      )}
+
+      {/* Bottom Navigation for Store */}
+      <div className="store-bottom-nav">
+        <div className="nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="24" height="24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" strokeWidth="2"/></svg>
+          <span>SATSANG</span>
+        </div>
+        <div className="nav-item active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="24" height="24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" strokeWidth="2"/></svg>
+          <span>CANTEEN</span>
+        </div>
+        <div className="nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="24" height="24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" strokeWidth="2"/></svg>
+          <span>ALERTS</span>
+        </div>
+        <div className="nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="24" height="24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" strokeWidth="2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33 1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" strokeWidth="2"/></svg>
+          <span>SETTINGS</span>
+        </div>
+      </div>
+
+      {/* Cart Sidebar/Modal */}
       {showCart && (
-        <div className="cart-overlay" onClick={() => setShowCart(false)}>
-          <div className="cart-sidebar" onClick={(e) => e.stopPropagation()}>
-            <div className="cart-header">
-              <h2>🛒 Your Cart</h2>
-              <button className="close-btn" onClick={() => setShowCart(false)} title="Close">
-                ✕
-              </button>
+        <div className="store-modal-overlay" onClick={() => setShowCart(false)}>
+          <div className="store-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>My Cart</h2>
+              <button onClick={() => setShowCart(false)}>✕</button>
             </div>
-
-            {cart.length === 0 ? (
-              <div className="empty-cart-container">
-                <div className="empty-cart-icon">🛒</div>
-                <p>Your cart feels light. Maybe add some items?</p>
-                <button className="continue-shopping-btn" onClick={() => setShowCart(false)}>
-                  Start Shopping
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="cart-items">
-                  {cart.map((item) => (
-                    <div key={item.ItemID} className="cart-item">
-                      <div className="cart-item-image">
-                        {item.ImageData ? (
-                          <img
-                            src={`data:image/jpeg;base64,${item.ImageData}`}
-                            alt={item.ItemName}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }}
-                          />
-                        ) : (
-                          "📦"
-                        )}
-                      </div>
-                      <div className="cart-item-info">
-                        <h4>{item.ItemName}</h4>
-                        <p className="cart-item-price">
-                          ₹{item.Price}
-                        </p>
-                        <div className="quantity-controls">
-                          <button
-                            onClick={() =>
-                              updateCartItem(item.ItemID, item.quantity - 1)
-                            }
-                          >
-                            −
-                          </button>
-                          <span>{item.quantity}</span>
-                          <button
-                            onClick={() =>
-                              updateCartItem(item.ItemID, item.quantity + 1)
-                            }
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                      <div className="cart-item-total">
-                        <p>₹{item.Price * item.quantity}</p>
-                        <button
-                          className="remove-btn"
-                          title="Remove item"
-                          onClick={() => removeFromCart(item.ItemID)}
-                        >
-                          🗑️
-                        </button>
-                      </div>
+            <div className="modal-body">
+              {cart.map(item => {
+                const stock = items.find(i => i.ItemID === item.ItemID)?.Quantity || 0;
+                return (
+                  <div key={item.ItemID} className="cart-list-item">
+                    <div className="cart-item-image">
+                      <img src={formatImage(item.ImageData)} alt={item.ItemName} />
                     </div>
-                  ))}
-                </div>
-
-                <div className="cart-footer">
-                  <div className="cart-total">
-                    <span>
-                      Total Sum ({calculateCartTotals().totalItems})
-                    </span>
-                    <span className="total-amount">
-                      ₹{calculateCartTotals().totalPrice}
-                    </span>
+                    <div className="info">
+                      <h4>{item.ItemName}</h4>
+                      <p>₹{item.Price} × {item.quantity}</p>
+                      <span className="cart-stock-hint">Available: {stock}</span>
+                    </div>
+                    <div className="controls">
+                      <button onClick={() => updateCartItem(item.ItemID, item.quantity - 1)}>−</button>
+                      <span>{item.quantity}</span>
+                      <button onClick={() => updateCartItem(item.ItemID, item.quantity + 1)}>+</button>
+                    </div>
                   </div>
-                  <button
-                    className="checkout-btn"
-                    onClick={() => setShowCheckout(true)}
-                  >
-                    Checkout Now ➔
-                  </button>
-                  <p className="cod-note">✨ Only Cash on Delivery available</p>
-                </div>
-              </>
-            )}
+                );
+              })}
+            </div>
+            <div className="modal-footer">
+              <div className="total">Total: ₹{totalPrice}</div>
+              <button className="checkout-btn" onClick={() => setShowCheckout(true)}>Checkout</button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Checkout Modal */}
       {showCheckout && (
-        <div
-          className="checkout-overlay"
-          onClick={() => setShowCheckout(false)}
-        >
-          <div className="checkout-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="checkout-header">
-              <h2>📦 Secure Checkout</h2>
-              <button
-                className="close-btn"
-                onClick={() => setShowCheckout(false)}
-                title="Close"
-              >
-                ✕
-              </button>
+        <div className="store-modal-overlay" onClick={() => setShowCheckout(false)}>
+          <div className="store-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Checkout</h2>
+              <button onClick={() => setShowCheckout(false)}>✕</button>
             </div>
-
-            <form onSubmit={placeOrder} className="checkout-form">
-              <div className="order-summary">
+            <div className="modal-body">
+              <div className="order-summary-box">
                 <h3>Order Summary</h3>
-                <div className="summary-items">
-                  {cart.map((item) => (
-                    <div key={item.ItemID} className="summary-item">
-                      <span>
-                        {item.ItemName} × {item.quantity}
-                      </span>
-                      <span>₹{item.Price * item.quantity}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="summary-total">
-                  <span>Grand Total</span>
-                  <span>₹{calculateCartTotals().totalPrice}</span>
+                {cart.map(item => (
+                  <div key={item.ItemID} className="summary-item">
+                    <span>{item.ItemName} × {item.quantity}</span>
+                    <span>₹{item.Price * item.quantity}</span>
+                  </div>
+                ))}
+                <div className="summary-total-line">
+                  <span>To Pay</span>
+                  <span>₹{totalPrice}</span>
                 </div>
               </div>
 
-              <div className="delivery-details">
-                <h3>Delivery Details</h3>
+              <form onSubmit={placeOrder} className="modern-checkout-form">
                 <div className="form-group">
-                  <label>Full Delivery Address *</label>
-                  <textarea
-                    value={checkoutForm.deliveryAddress}
-                    onChange={(e) =>
-                      setCheckoutForm({
-                        ...checkoutForm,
-                        deliveryAddress: e.target.value,
-                      })
-                    }
-                    placeholder="Provide your complete address for delivery"
-                    rows="3"
-                    required
-                  />
+                  <label>Customer Name</label>
+                  <input type="text" value={user.name || "Member"} disabled className="disabled-field" />
                 </div>
                 <div className="form-group">
-                  <label>Contact Phone Number *</label>
-                  <input
-                    type="tel"
+                  <label>Phone Number</label>
+                  <input 
+                    type="tel" 
+                    placeholder="Phone number for delivery" 
                     value={checkoutForm.deliveryPhone}
-                    onChange={(e) =>
-                      setCheckoutForm({
-                        ...checkoutForm,
-                        deliveryPhone: e.target.value,
-                      })
-                    }
-                    placeholder="Enter active phone number"
-                    required
+                    onChange={e => setCheckoutForm({...checkoutForm, deliveryPhone: e.target.value})}
+                    required 
                   />
                 </div>
                 <div className="form-group">
-                  <label>Special Instructions (Optional)</label>
-                  <textarea
-                    value={checkoutForm.specialInstructions}
-                    onChange={(e) =>
-                      setCheckoutForm({
-                        ...checkoutForm,
-                        specialInstructions: e.target.value,
-                      })
-                    }
-                    placeholder="e.g. Leave at the door, call before arrival"
-                    rows="2"
+                  <label>Delivery Address</label>
+                  <textarea 
+                    placeholder="Enter complete address" 
+                    value={checkoutForm.deliveryAddress}
+                    onChange={e => setCheckoutForm({...checkoutForm, deliveryAddress: e.target.value})}
+                    required 
                   />
                 </div>
-              </div>
 
-              <div className="payment-method">
-                <h3>Payment Method</h3>
-                <div className="cod-only">
-                  <span className="pay-icon">🤝</span>
-                  <div>
-                    <strong>Cash on Delivery (Safe & Secure)</strong>
-                    <p>Pay only when you receive your order</p>
+                <div className="cod-notice-card">
+                  <div className="icon">💵</div>
+                  <div className="details">
+                    <strong>Cash on Delivery (COD) Only</strong>
+                    <p>No GPay / Online payments accepted</p>
                   </div>
                 </div>
-              </div>
 
-              <button type="submit" className="place-order-btn">
-                Confirm Order - ₹{calculateCartTotals().totalPrice}
-              </button>
-            </form>
+                <button type="submit" className="place-btn-final" disabled={loading}>
+                  {loading ? "Placing Order..." : "PLACE ORDER NOW"}
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       )}

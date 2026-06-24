@@ -67,7 +67,9 @@ export const getAllSevaEntries = async (req, res) => {
         s.SevaDate as date,
         s.CreatedAt as created_at
       FROM Seva s
-      LEFT JOIN MemberDetails m ON s.UserID = m.UserID
+      LEFT JOIN (
+        SELECT UserID, MAX(Name) as Name FROM MemberDetails GROUP BY UserID
+      ) m ON s.UserID = m.UserID
       ORDER BY s.CreatedAt DESC
     `);
 
@@ -97,7 +99,9 @@ export const getSevaEntriesByMember = async (req, res) => {
           s.SevaDate as date,
           s.CreatedAt as created_at
         FROM Seva s
-        LEFT JOIN MemberDetails m ON s.UserID = m.UserID
+        LEFT JOIN (
+          SELECT UserID, MAX(Name) as Name FROM MemberDetails GROUP BY UserID
+        ) m ON s.UserID = m.UserID
         WHERE s.UserID = @memberId 
         ORDER BY s.CreatedAt DESC
       `);
@@ -112,6 +116,39 @@ export const getSevaReport = async (req, res) => {
   try {
     const pool = await getPool();
     const { fromDate, toDate } = req.query;
+    const requester = req.user;
+
+    // Fetch requester permissions to decide on data isolation
+    const reqPowerResult = await pool.request()
+      .input("reqId", sql.Int, requester.id)
+      .query("SELECT Name, ChkAdmin, CanManageAttendance FROM MemberDetails WHERE UserID = @reqId");
+    
+    const reqData = reqPowerResult.recordset[0];
+    const isPowerUser = reqData?.ChkAdmin || reqData?.CanManageAttendance;
+
+    // Strict Privacy Logic: Non-admins/Non-managers only see their family's seva
+    let familyRestrictionClause = "";
+    if (!isPowerUser) {
+      const fullName = reqData?.Name || "";
+      const nameParts = fullName.trim().split(/\s+/);
+      const surname = nameParts.length > 1 ? nameParts[nameParts.length - 1] : fullName;
+
+      if (surname) {
+        // Find all family member IDs
+        const familyResult = await pool.request()
+          .input("surname", sql.NVarChar, `%${surname}`)
+          .query("SELECT UserID FROM MemberDetails WHERE Name LIKE @surname");
+        
+        const familyIds = familyResult.recordset.map(r => r.UserID);
+        if (familyIds.length > 0) {
+          familyRestrictionClause = ` AND s.UserID IN (${familyIds.join(",")})`;
+        } else {
+          familyRestrictionClause = ` AND s.UserID = ${requester.id}`; // Fallback to self
+        }
+      } else {
+        familyRestrictionClause = ` AND s.UserID = ${requester.id}`; // Fallback to self
+      }
+    }
 
     let query = `
       SELECT TOP 10000
@@ -130,8 +167,13 @@ export const getSevaReport = async (req, res) => {
         s.SevaDate as date,
         s.CreatedAt as created_at
       FROM Seva s
-      LEFT JOIN MemberDetails m ON s.UserID = m.UserID
-      WHERE 1=1
+      LEFT JOIN (
+        SELECT UserID, MAX(Name) as Name, MAX(Status) as Status, MAX(Gender) as Gender, 
+               MAX(DOB) as DOB, MAX(Initital) as Initital, MAX(Association_member) as Association_member
+        FROM MemberDetails 
+        GROUP BY UserID
+      ) m ON s.UserID = m.UserID
+      WHERE 1=1 ${familyRestrictionClause}
     `;
 
     const request = pool.request();

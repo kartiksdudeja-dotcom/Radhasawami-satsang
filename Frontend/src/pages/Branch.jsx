@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "../styles/Branch.css";
-import { API_ENDPOINTS } from "../config/apiConfig";
+import { API_ENDPOINTS, getAuthHeaders, apiFetch } from "../config/apiConfig";
 
 const MEMBERS_API = API_ENDPOINTS.MEMBERS;
 const ATTENDANCE_API = API_ENDPOINTS.ATTENDANCE;
@@ -58,9 +58,8 @@ const Branch = () => {
 
   const fetchPhases = async () => {
     try {
-      const response = await fetch(API_ENDPOINTS.SUPERMAN_PHASES);
-      const result = await response.json();
-      if (result.success && result.data.length > 0) {
+      const result = await apiFetch(API_ENDPOINTS.SUPERMAN_PHASES);
+      if (result && result.success && result.data.length > 0) {
         // Extract unique phase names to use as categories
         const phaseNames = Array.from(new Set(result.data.map(p => p.PhaseName)));
         setStatCategories(["Initiated", "Jigyasu", ...phaseNames]);
@@ -104,8 +103,8 @@ const Branch = () => {
         if (recordDate && recordDate.includes("/")) {
           const parts = recordDate.split("/");
           if (parts.length === 3) {
-            const month = parts[0].padStart(2, "0");
-            const day = parts[1].padStart(2, "0");
+            const day = parts[0].padStart(2, "0");    // Day is first in DD/MM/YYYY
+            const month = parts[1].padStart(2, "0");  // Month is second
             const year = parts[2];
             normalizedDate = `${year}-${month}-${day}`;
           }
@@ -132,9 +131,8 @@ const Branch = () => {
   const fetchMembers = async () => {
     try {
       setLoading(true);
-      const response = await fetch(MEMBERS_API);
-      const result = await response.json();
-      if (result.success) {
+      const result = await apiFetch(MEMBERS_API);
+      if (result && result.success) {
         setMembers(result.data);
       }
     } catch (error) {
@@ -146,9 +144,8 @@ const Branch = () => {
 
   const fetchAttendanceRecords = async () => {
     try {
-      const response = await fetch(ATTENDANCE_API);
-      const result = await response.json();
-      if (result.success) {
+      const result = await apiFetch(ATTENDANCE_API);
+      if (result && result.success) {
         setAttendanceRecords(result.data);
       }
     } catch (error) {
@@ -209,18 +206,16 @@ const Branch = () => {
     }
 
     try {
-      const response = await fetch(API_ENDPOINTS.SUPERMAN_PHASES, {
+      const result = await apiFetch(API_ENDPOINTS.SUPERMAN_PHASES, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phaseName: categoryName }),
       });
 
-      const result = await response.json();
-      if (result.success) {
+      if (result && result.success) {
         setNewStatCategory("");
         setShowAddStatCategory(false);
         fetchPhases(); // Refresh list from backend
-      } else {
+      } else if (result) {
         alert("Error adding category: " + result.error);
       }
     } catch (error) {
@@ -243,22 +238,20 @@ const Branch = () => {
 
     try {
       // First, get the ID of the phase to delete
-      const phasesRes = await fetch(API_ENDPOINTS.SUPERMAN_PHASES);
-      const phasesResult = await phasesRes.json();
+      const phasesResult = await apiFetch(API_ENDPOINTS.SUPERMAN_PHASES);
       
-      if (phasesResult.success) {
+      if (phasesResult && phasesResult.success) {
         const phase = phasesResult.data.find(p => p.PhaseName === categoryToDelete);
         
         if (phase) {
           // Delete from database
-          const deleteRes = await fetch(`${API_ENDPOINTS.SUPERMAN_PHASES}/${phase.ID}`, {
+          const deleteResult = await apiFetch(`${API_ENDPOINTS.SUPERMAN_PHASES}/${phase.ID}`, {
             method: 'DELETE'
           });
           
-          const deleteResult = await deleteRes.json();
-          if (deleteResult.success) {
+          if (deleteResult && deleteResult.success) {
             fetchPhases(); // Refresh list from backend
-          } else {
+          } else if (deleteResult) {
             alert("Error deleting category: " + deleteResult.error);
           }
         } else {
@@ -273,7 +266,8 @@ const Branch = () => {
   };
 
   // Filter records based on date range, category, time slot, and person name
-  const filteredRecords = attendanceRecords.filter((record) => {
+  // MODIFICATION: Only show records if date range is set
+  const filteredRecords = (!fromDate || !toDate) ? [] : attendanceRecords.filter((record) => {
     // Date range filter - Handle MM/DD/YYYY format from database
     let dateMatch = true;
     
@@ -285,8 +279,8 @@ const Branch = () => {
         // Convert MM/DD/YYYY to YYYY-MM-DD format
         const parts = recordDate.split("/");
         if (parts.length === 3) {
-          const month = parts[0].padStart(2, "0");  // Month first
-          const day = parts[1].padStart(2, "0");    // Day second
+          const day = parts[0].padStart(2, "0");    // Day is first in DD/MM/YYYY
+          const month = parts[1].padStart(2, "0");  // Month is second
           const year = parts[2];
           normalizedDate = `${year}-${month}-${day}`;
         }
@@ -410,16 +404,14 @@ const Branch = () => {
     }
 
     try {
-      const response = await fetch(`${ATTENDANCE_API}/${recordId}`, {
+      const result = await apiFetch(`${ATTENDANCE_API}/${recordId}`, {
         method: "DELETE",
       });
 
-      const result = await response.json();
-
-      if (result.success) {
+      if (result && result.success) {
         alert("Record deleted successfully!");
         fetchAttendanceRecords();
-      } else {
+      } else if (result) {
         alert("Error: " + result.message);
       }
     } catch (error) {
@@ -438,19 +430,17 @@ const Branch = () => {
     }
 
     try {
-      const response = await fetch(
+      const result = await apiFetch(
         `${ATTENDANCE_API}/${recordId}/member/${memberId}`,
         {
           method: "DELETE",
         }
       );
 
-      const result = await response.json();
-
-      if (result.success) {
+      if (result && result.success) {
         alert("Member deleted from attendance!");
         fetchAttendanceRecords();
-      } else {
+      } else if (result) {
         alert("Error: " + result.message);
       }
     } catch (error) {
@@ -762,7 +752,7 @@ const Branch = () => {
 
         {filteredRecords.length === 0 ? (
           <div className="no-records">
-            <p>No attendance records found</p>
+            <p>{(!fromDate || !toDate) ? "Please select a From and To date range to view attendance records" : "No attendance records found for the selected filters"}</p>
           </div>
         ) : (
           <>

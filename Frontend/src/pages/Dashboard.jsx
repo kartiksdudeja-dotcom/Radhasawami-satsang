@@ -18,42 +18,65 @@ import SupermanPhase from './SupermanPhase';
 import AdminMaster from './AdminMaster';
 import SevaCategory from '../components/SevaCategory';
 import SevaEntry from '../components/SevaEntry';
-import { API_BASE_URL } from '../config/apiConfig';
+import { API_BASE_URL, getAuthHeaders, apiFetch } from '../config/apiConfig';
 
 const Dashboard = ({ onLogout, user }) => {
   const [activeMenu, setActiveMenu] = useState('home');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isProfileComplete, setIsProfileComplete] = useState(true);
-  const [checkingProfile, setCheckingProfile] = useState(true);
 
-  console.log('Dashboard user:', user);
-  console.log('User is_admin:', user?.is_admin);
+  // --- Permission Logic (Moved to Top) ---
+  const isActualAdmin = user?.is_admin === true || user?.is_admin == 1 || String(user?.is_admin).toLowerCase() === "true";
+  const canActualManageAttendance = user?.can_manage_attendance === true || user?.can_manage_attendance == 1 || String(user?.can_manage_attendance).toLowerCase() === "true";
+  const canActualManageStore = user?.can_manage_store === true || user?.can_manage_store == 1 || String(user?.can_manage_store).toLowerCase() === "true";
+  
+  const isUserMode = user?.loginMode === 'user';
+  const isAdmin = isActualAdmin && !isUserMode;
+  const canManageAttendance = canActualManageAttendance && !isUserMode;
+  const canManageStore = canActualManageStore && !isUserMode;
+  
+  const isAdminPower = isAdmin || canManageAttendance || canManageStore;
+  const isSidebarLayout = isAdminPower;
+  // -----------------------------------------
+
+  const [isProfileComplete, setIsProfileComplete] = useState(() => {
+    return user?.is_profile_complete !== false; // Default to true unless explicitly false
+  });
+  const [checkingProfile, setCheckingProfile] = useState(false);
 
   // Check profile completion status on mount
   useEffect(() => {
-    checkProfileStatus();
-  }, [user]);
+    // Only show loading if we don't know the status yet
+    if (user?.is_profile_complete === undefined) {
+      checkProfileStatus(true);
+    } else {
+      checkProfileStatus(false);
+    }
+  }, [user?.id]);
 
-  const checkProfileStatus = async () => {
+  const checkProfileStatus = async (shouldShowLoading = false) => {
     try {
-      setCheckingProfile(true);
-      const response = await fetch(`${API_BASE_URL}/api/profile/${user?.id}/status`);
-      const result = await response.json();
+      if (!user?.id) return;
+      if (shouldShowLoading) setCheckingProfile(true);
       
-      if (result.success) {
+      const result = await apiFetch(`/api/profile/${user.id}/status`);
+      
+      if (result && result.success) {
         setIsProfileComplete(result.is_profile_complete);
+        
+        // Update user object with new status
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        if (storedUser.is_profile_complete !== result.is_profile_complete) {
+          storedUser.is_profile_complete = result.is_profile_complete;
+          localStorage.setItem('user', JSON.stringify(storedUser));
+        }
+
         // If profile is not complete, force user to profile page
-        if (!result.is_profile_complete) {
+        if (!result.is_profile_complete && activeMenu !== 'profile') {
           setActiveMenu('profile');
         }
-        // Update localStorage
-        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        storedUser.is_profile_complete = result.is_profile_complete;
-        localStorage.setItem('user', JSON.stringify(storedUser));
       }
     } catch (error) {
       console.error('Error checking profile status:', error);
-      // If check fails, assume profile is complete to not block user
       setIsProfileComplete(true);
     } finally {
       setCheckingProfile(false);
@@ -110,7 +133,7 @@ const Dashboard = ({ onLogout, user }) => {
 
     // Show Store Admin page (admin or store power)
     if (activeMenu === 'store-admin') {
-      if (!user?.is_admin && !user?.can_manage_store) {
+      if (!canManageStore && !isAdmin) {
         setActiveMenu('home');
         return null;
       }
@@ -124,17 +147,25 @@ const Dashboard = ({ onLogout, user }) => {
 
     // Show Branch page
     if (activeMenu === 'branch') {
+      if (!isAdmin) {
+        setActiveMenu('home');
+        return null;
+      }
       return <Branch />;
     }
 
     // Show Members page
     if (activeMenu === 'members') {
+      if (!canManageAttendance) {
+        setActiveMenu('home');
+        return null;
+      }
       return <Members />;
     }
 
     // Show Member Master page (admin only)
     if (activeMenu === 'member-master') {
-      if (!user?.is_admin) {
+      if (!isAdmin && !canManageAttendance) {
         setActiveMenu('home');
         return null;
       }
@@ -148,7 +179,7 @@ const Dashboard = ({ onLogout, user }) => {
 
     // Show Satsang Options page (admin only)
     if (activeMenu === 'satsang-options') {
-      if (!user?.is_admin) {
+      if (!isAdmin && !canManageAttendance) {
         setActiveMenu('home');
         return null;
       }
@@ -157,7 +188,7 @@ const Dashboard = ({ onLogout, user }) => {
 
     // Show Seva Options page (admin only)
     if (activeMenu === 'seva-options') {
-      if (!user?.is_admin) {
+      if (!isAdmin && !canManageAttendance) {
         setActiveMenu('home');
         return null;
       }
@@ -166,7 +197,7 @@ const Dashboard = ({ onLogout, user }) => {
 
     // Show Superman Phase page (admin only)
     if (activeMenu === 'superman-phase') {
-      if (!user?.is_admin) {
+      if (!isAdmin) {
         setActiveMenu('home');
         return null;
       }
@@ -175,7 +206,7 @@ const Dashboard = ({ onLogout, user }) => {
 
     // Show Admin Master page (admin only)
     if (activeMenu === 'admin-master') {
-      if (!user?.is_admin) {
+      if (!isAdmin) {
         setActiveMenu('home');
         return null;
       }
@@ -209,7 +240,7 @@ const Dashboard = ({ onLogout, user }) => {
 
     // Show Notifications page
     if (activeMenu === 'notifications') {
-      return <Notification onNavigate={handleNavigate} />;
+      return <Notification user={user} />;
     }
 
     // Show Seva Category pages
@@ -227,9 +258,10 @@ const Dashboard = ({ onLogout, user }) => {
     return <AaglaSatsang onNavigate={handleNavigate} user={user} />;
   };
 
+
   return (
     <div className="dashboard-wrapper">
-      {/* Navbar always visible with sidebar */}
+      {/* Navbar visible with sidebar only for admins */}
       <Navbar 
         onLogout={handleLogout} 
         activeMenu={activeMenu} 
@@ -239,7 +271,7 @@ const Dashboard = ({ onLogout, user }) => {
         isProfileComplete={isProfileComplete}
       />
       
-      <div className={`dashboard-container ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'} ${activeMenu === 'home' || activeMenu === 'dashboard' ? 'aagla-satsang-active' : ''}`}>
+      <div className={`dashboard-container ${isSidebarLayout ? (isSidebarOpen ? 'sidebar-open' : 'sidebar-closed') : 'user-layout-full'} ${activeMenu === 'home' || activeMenu === 'dashboard' ? 'aagla-satsang-active' : ''}`}>
         {checkingProfile ? (
           <div className="profile-checking">
             <div className="loading-spinner"></div>

@@ -11,6 +11,9 @@ const __dirname = path.dirname(__filename);
 export const getProfile = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id || isNaN(id)) {
+      return res.status(400).json({ success: false, error: "Invalid user ID" });
+    }
     const pool = await getPool();
 
     // Ensure ProfilePhoto column exists
@@ -290,6 +293,9 @@ export const completeProfile = async (req, res) => {
 export const checkProfileStatus = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id || isNaN(id)) {
+      return res.status(400).json({ success: false, error: "Invalid user ID" });
+    }
     const pool = await getPool();
 
     const result = await pool
