@@ -1,19 +1,14 @@
-name: Deploy Website
+name: Test Runner
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
-  deploy:
+  test:
     runs-on: self-hosted
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Test Runner
+      - name: Create Test File
+        shell: powershell
         run: |
-          echo "Deployment Started"
-          hostname
+          "GitHub Runner Working $(Get-Date)" | Out-File "D:\Website\uat\test.txt"
