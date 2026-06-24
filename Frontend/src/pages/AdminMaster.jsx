@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import '../styles/Dashboard.css';
-import { API_ENDPOINTS } from '../config/apiConfig';
+import { API_ENDPOINTS, getAuthHeaders, apiFetch } from '../config/apiConfig';
 
 const AdminMaster = ({ user }) => {
   const [members, setMembers] = useState([]);
@@ -15,9 +15,8 @@ const AdminMaster = ({ user }) => {
   const fetchMembers = async () => {
     try {
       setLoading(true);
-      const resp = await fetch(API_ENDPOINTS.MEMBERS);
-      const result = await resp.json();
-      if (result.success) {
+      const result = await apiFetch(API_ENDPOINTS.MEMBERS);
+      if (result && result.success) {
         setMembers(result.data);
       }
     } catch (e) {
@@ -38,12 +37,11 @@ const AdminMaster = ({ user }) => {
 
     setUpdatingId(`${memberId}-${powerType}`);
     try {
-      const resp = await fetch(`${API_ENDPOINTS.MEMBERS}/${memberId}/power`, {
+      const result = await apiFetch(`${API_ENDPOINTS.MEMBERS}/${memberId}/power`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedPowers)
       });
-      if (resp.ok) {
+      if (result) {
         setMembers(prev => prev.map(m => m.id === memberId ? { ...m, [powerType]: !currentValue } : m));
       }
     } catch (e) {

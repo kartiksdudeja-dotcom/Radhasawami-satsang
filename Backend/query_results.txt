@@ -1,0 +1,117 @@
+
+--- Attendance Sample ---
+[
+  {
+    "Attendance_Id": 5,
+    "Attendance_date": "8/12/2023",
+    "UserID": 1,
+    "Shift": "Morning",
+    "Audio_Satsang": "Morning audio satsang",
+    "dt": null,
+    "day": 8,
+    "month": 12,
+    "year": 2023,
+    "PresentTime": null
+  },
+  {
+    "Attendance_Id": 6,
+    "Attendance_date": "8/12/2023",
+    "UserID": 2,
+    "Shift": "Morning",
+    "Audio_Satsang": "Morning audio satsang",
+    "dt": null,
+    "day": 8,
+    "month": 12,
+    "year": 2023,
+    "PresentTime": null
+  },
+  {
+    "Attendance_Id": 7,
+    "Attendance_date": "8/12/2023",
+    "UserID": 3,
+    "Shift": "Morning",
+    "Audio_Satsang": "Morning audio satsang",
+    "dt": null,
+    "day": 8,
+    "month": 12,
+    "year": 2023,
+    "PresentTime": null
+  },
+  {
+    "Attendance_Id": 8,
+    "Attendance_date": "8/12/2023",
+    "UserID": 4,
+    "Shift": "Morning",
+    "Audio_Satsang": "Morning audio satsang",
+    "dt": null,
+    "day": 8,
+    "month": 12,
+    "year": 2023,
+    "PresentTime": null
+  },
+  {
+    "Attendance_Id": 9,
+    "Attendance_date": "8/12/2023",
+    "UserID": 1,
+    "Shift": "Evening",
+    "Audio_Satsang": "Evening audio satsang",
+    "dt": null,
+    "day": 8,
+    "month": 12,
+    "year": 2023,
+    "PresentTime": null
+  }
+]
+--- Seva Sample ---
+[
+  {
+    "SevaId": 1,
+    "UserID": 1,
+    "SevaCategory": "Mahila Association",
+    "SevaName": "Knitting",
+    "Hours": 2,
+    "Cost": 100,
+    "SevaDate": "2025-12-29",
+    "CreatedAt": "2025-12-29T08:54:59.957Z"
+  },
+  {
+    "SevaId": 2,
+    "UserID": 1,
+    "SevaCategory": "Mahila Association",
+    "SevaName": "Knitting",
+    "Hours": 1,
+    "Cost": 1,
+    "SevaDate": "2025-12-29",
+    "CreatedAt": "2025-12-29T08:58:50.403Z"
+  },
+  {
+    "SevaId": 3,
+    "UserID": 1,
+    "SevaCategory": "Youth Association",
+    "SevaName": "Cleaning",
+    "Hours": 1,
+    "Cost": 0,
+    "SevaDate": "2025-12-29",
+    "CreatedAt": "2025-12-29T09:00:32.793Z"
+  },
+  {
+    "SevaId": 4,
+    "UserID": 709,
+    "SevaCategory": "Mahila Association",
+    "SevaName": "Knitting",
+    "Hours": 1,
+    "Cost": 1,
+    "SevaDate": "2025-12-29",
+    "CreatedAt": "2025-12-29T10:00:02.850Z"
+  },
+  {
+    "SevaId": 5,
+    "UserID": 1,
+    "SevaCategory": "Youth Association",
+    "SevaName": "Exhibition",
+    "Hours": 44,
+    "Cost": 0,
+    "SevaDate": "2026-02-24",
+    "CreatedAt": "2026-02-24T22:27:56.330Z"
+  }
+]

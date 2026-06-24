@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download RS Portal App</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 24px;
+            padding: 32px;
+            max-width: 420px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+        .app-icon {
+            width: 90px;
+            height: 90px;
+            margin: 0 auto 16px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            border-radius: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4);
+        }
+        h1 { color: #1f2937; margin-bottom: 6px; font-size: 26px; }
+        .subtitle { color: #6b7280; margin-bottom: 20px; font-size: 14px; }
+        
+        .download-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            padding: 16px;
+            border-radius: 14px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            color: white;
+            transition: all 0.3s ease;
+            margin-bottom: 12px;
+        }
+        .download-btn.apk {
+            background: linear-gradient(135deg, #10b981, #059669);
+            box-shadow: 0 6px 20px rgba(5, 150, 105, 0.3);
+        }
+        .download-btn.apk:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(5, 150, 105, 0.4);
+        }
+        .download-btn.web {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.3);
+        }
+        .download-btn.web:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(37, 99, 235, 0.4);
+        }
+        .download-btn.disabled {
+            background: #d1d5db;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+        
+        .status {
+            padding: 14px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            text-align: left;
+        }
+        .status.checking { background: #fef3c7; color: #92400e; }
+        .status.ready { background: #d1fae5; color: #065f46; }
+        .status.not-ready { background: #fee2e2; color: #991b1b; }
+        
+        .divider { color: #9ca3af; margin: 16px 0; font-size: 12px; }
+        
+        .features {
+            background: #f9fafb;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 16px 0;
+            text-align: left;
+        }
+        .feature { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; color: #374151; }
+        .feature:last-child { margin-bottom: 0; }
+        .feature-icon { color: #10b981; }
+        
+        .instructions {
+            background: #eff6ff;
+            border-radius: 12px;
+            padding: 14px;
+            text-align: left;
+            font-size: 12px;
+            color: #1e40af;
+        }
+        .instructions h3 { font-size: 13px; margin-bottom: 8px; }
+        .instructions ol { padding-left: 18px; margin: 0; }
+        .instructions li { margin-bottom: 4px; }
+        
+        .version { color: #9ca3af; font-size: 11px; margin-top: 16px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="app-icon">RS</div>
+        <h1>RS Portal</h1>
+        <p class="subtitle">Radha Swami Society App</p>
+
+        <div id="status" class="status checking">⏳ Checking for APK...</div>
+
+        <a href="/RSPortal.apk" id="apkBtn" class="download-btn apk disabled" download="RSPortal.apk">
+            📥 Download APK (Android)
+        </a>
+
+        <div class="divider">— OR —</div>
+
+        <a href="/" class="download-btn web">
+            🌐 Open Web App (Works Instantly)
+        </a>
+
+        <div class="features">
+            <div class="feature"><span class="feature-icon">✓</span> Attendance System</div>
+            <div class="feature"><span class="feature-icon">✓</span> Seva Management</div>
+            <div class="feature"><span class="feature-icon">✓</span> Store & Inventory</div>
+            <div class="feature"><span class="feature-icon">✓</span> Member Directory</div>
+        </div>
+
+        <div class="instructions" id="instructions">
+            <h3>📲 Install APK:</h3>
+            <ol>
+                <li>Download the APK file</li>
+                <li>Open file → Allow "Unknown sources" if asked</li>
+                <li>Tap Install → Done!</li>
+            </ol>
+        </div>
+
+        <div class="version">v1.0.0 | Dec 27, 2025</div>
+    </div>
+
+    <script>
+        const apkBtn = document.getElementById('apkBtn');
+        const status = document.getElementById('status');
+        const instructions = document.getElementById('instructions');
+
+        // Check APK
+        fetch('/RSPortal.apk', { method: 'HEAD' })
+            .then(r => {
+                const size = r.headers.get('content-length');
+                if (r.ok && size > 10000) {
+                    status.className = 'status ready';
+                    status.innerHTML = '✅ APK Ready! (' + (size/1024/1024).toFixed(1) + ' MB)';
+                    apkBtn.classList.remove('disabled');
+                } else {
+                    showWebOption();
+                }
+            })
+            .catch(() => showWebOption());
+
+        function showWebOption() {
+            status.className = 'status not-ready';
+            status.innerHTML = '⚠️ APK not available. Use <strong>Web App</strong> below - works like native app!';
+            apkBtn.classList.add('disabled');
+            apkBtn.onclick = e => { e.preventDefault(); alert('Use Web App instead!'); };
+            instructions.innerHTML = `
+                <h3>📱 Install Web App:</h3>
+                <ol>
+                    <li>Click "Open Web App"</li>
+                    <li>Chrome: Menu ⋮ → "Install app" or "Add to Home Screen"</li>
+                    <li>Safari: Share ↑ → "Add to Home Screen"</li>
+                </ol>
+            `;
+        }
+    </script>
+</body>
+</html>

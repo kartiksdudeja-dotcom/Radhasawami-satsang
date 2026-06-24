@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import "../styles/AaglaSatsang.css";
-import { API_BASE_URL } from "../config/apiConfig";
+import MGRSALogo from "../assests/WhatsApp Image 2025-12-20 at 16.55.36.jpeg";
+import { API_BASE_URL, getAuthHeaders, apiFetch } from "../config/apiConfig";
 
 const AaglaSatsang = ({ onNavigate, user }) => {
   const [events, setEvents] = useState([]);
@@ -37,16 +38,9 @@ const AaglaSatsang = ({ onNavigate, user }) => {
         user?.id || JSON.parse(localStorage.getItem("user") || "{}").id;
 
       // Fetch notifications - events and announcements
-      const response = await fetch(
-        `${API_BASE_URL}/api/notifications?user_id=${userId || ""}`,
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
+      const result = await apiFetch(`/api/notifications?user_id=${userId || ""}`);
 
-      if (response.ok) {
-        const result = await response.json();
+      if (result) {
         const notificationsList = Array.isArray(result.data)
           ? result.data
           : Array.isArray(result)
@@ -57,19 +51,17 @@ const AaglaSatsang = ({ onNavigate, user }) => {
         const eventsList = notificationsList.filter(
           (n) => n.type === "event" || n.message_type === "event" || n.type === "upcoming_event" || n.message_type === "upcoming_event",
         );
+        
+        // Announcements are everything that isn't an event
         const announcementsList = notificationsList.filter(
-          (n) =>
-            (n.type === "announcement" ||
-            n.message_type === "announcement" ||
-            n.type === "general" ||
-            n.message_type === "general" ||
-            (!n.type && !n.message_type)) && 
-            n.type !== "event" && n.message_type !== "event" &&
-            n.type !== "upcoming_event" && n.message_type !== "upcoming_event",
+          (n) => {
+            const isEvent = n.type === "event" || n.message_type === "event" || n.type === "upcoming_event" || n.message_type === "upcoming_event";
+            return !isEvent;
+          }
         );
 
-        setEvents(eventsList.slice(0, 5));
-        setAnnouncements(announcementsList.slice(0, 5));
+        setEvents(eventsList.slice(0, 20));
+        setAnnouncements(announcementsList.slice(0, 20));
 
         // Set latest announcement (only the newest one)
         if (announcementsList.length > 0) {
@@ -108,23 +100,14 @@ const AaglaSatsang = ({ onNavigate, user }) => {
         user?.id || JSON.parse(localStorage.getItem("user") || "{}").id;
       if (!userId) return;
 
-      const response = await fetch(
-        `${API_BASE_URL}/api/attendance/member-stats/${userId}`,
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
+      const result = await apiFetch(`/api/attendance/member-stats/${userId}`);
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          setAttendanceStats({
-            total: result.data?.total || 0,
-            thisMonth: result.data?.thisMonth || 0,
-            lastSatsang: result.data?.lastSatsang || null,
-          });
-        }
+      if (result && result.success) {
+        setAttendanceStats({
+          total: result.data?.total || 0,
+          thisMonth: result.data?.thisMonth || 0,
+          lastSatsang: result.data?.lastSatsang || null,
+        });
       }
     } catch (error) {
       console.error("Error fetching attendance stats:", error);
@@ -139,21 +122,32 @@ const AaglaSatsang = ({ onNavigate, user }) => {
 
   const formatDate = (dateString) => {
     if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("hi-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
+      return date.toLocaleDateString("hi-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+    } catch (e) {
+      return dateString;
+    }
   };
 
   const formatTime = (dateString) => {
     if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleTimeString("hi-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "";
+      return date.toLocaleTimeString("hi-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      });
+    } catch (e) {
+      return "";
+    }
   };
 
   const getTimeAgo = (dateString) => {
@@ -174,6 +168,7 @@ const AaglaSatsang = ({ onNavigate, user }) => {
 
   return (
     <div className="satsang-page-wrapper">
+
       {/* Live Announcement Banner - Shows latest admin notification */}
       <header className="satsang-header announcement-live-banner" key={`ann-${announcementKey}`}>
         <div className="live-banner-badge">
@@ -223,7 +218,7 @@ const AaglaSatsang = ({ onNavigate, user }) => {
       <div className="event-live-banner" key={`evt-${eventKey}`}>
         <div className="live-banner-badge event-badge">
           <span className="live-dot event-dot"></span>
-          <span>📅 आगामी कार्यक्रम</span>
+          <span>📅 अगला सत्संग</span>
         </div>
         {loading && !latestEvent ? (
           <div className="live-banner-loading">
@@ -271,7 +266,7 @@ const AaglaSatsang = ({ onNavigate, user }) => {
       {/* Section Divider */}
       <div className="section-divider">
         <div className="section-divider-line"></div>
-        <span className="section-divider-label">सूचनाएं एवं कार्यक्रम</span>
+        <span className="section-divider-label">रा–धा / धः–स्व–आ–मी एवं सूचनाएं</span>
         <div className="section-divider-line"></div>
       </div>
 
@@ -281,7 +276,7 @@ const AaglaSatsang = ({ onNavigate, user }) => {
         <div className="content-panel">
           <div className="panel-header">
             <span role="img" aria-label="calendar">📅</span>
-            <h2 className="panel-title">आगामी कार्यक्रम (Upcoming Events)</h2>
+            <h2 className="panel-title">रा–धा / धः–स्व–आ–मी</h2>
           </div>
           <div className="panel-body">
             {loading ? (

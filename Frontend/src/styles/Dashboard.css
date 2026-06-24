@@ -1,79 +1,74 @@
-/* ====== PROFESSIONAL BLUE & WHITE DASHBOARD ====== */
+/* ====== PROFESSIONAL DASHBOARD (SLATE HORIZON) ====== */
 
 .dashboard-wrapper {
   display: flex;
   min-height: 100vh;
-  background-color: var(--bg-main);
+  background-color: #f8f9ff;
+  font-family: 'Inter', sans-serif;
 }
 
 .dashboard-container {
   flex: 1;
   margin-left: var(--sidebar-width);
-  transition: var(--transition);
-  padding: 32px;
+  transition: margin-left 0.3s ease;
+  padding: 40px;
   width: calc(100% - var(--sidebar-width));
 }
-
-/* Padding handled below with !important */
 
 .dashboard-container.sidebar-closed {
   margin-left: var(--sidebar-collapsed-width);
   width: calc(100% - var(--sidebar-collapsed-width));
 }
 
+.dashboard-container.user-layout-full {
+  margin-left: 0;
+  width: 100%;
+  padding-bottom: 80px; /* Space for bottom nav */
+}
+
 .dashboard-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 32px;
-  padding: 0;
+  margin-bottom: 40px;
 }
 
 .header-left h1 {
-  font-size: 1.8rem;
+  font-size: 1.75rem;
   font-weight: 800;
-  color: var(--primary);
-  letter-spacing: -0.5px;
-}
-
-/* Standard padding for all pages */
-.dashboard-container.aagla-satsang-active .dashboard-content {
-  max-width: 1200px;
-  margin: 0 auto;
+  color: #0f172a;
+  letter-spacing: -0.025em;
 }
 
 .dashboard-content {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
-/* Responsiveness */
+/* Page Transitions */
+.dashboard-content {
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @media (max-width: 1024px) {
-  .dashboard-container { padding: 30px; }
+  .dashboard-container { padding: 32px; }
 }
 
 @media (max-width: 768px) {
   .dashboard-container {
     margin-left: 0 !important;
     width: 100% !important;
-    padding: 10px;
-    margin-top: 52px; /* matches new compact navbar height */
+    padding: 24px 16px;
+    margin-top: 56px;
   }
-
-  .dashboard-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-    margin-bottom: 14px;
-  }
-
+  
   .header-left h1 {
-    font-size: 1.2rem;
+    font-size: 1.5rem;
   }
 }
 
-@media (max-width: 480px) {
-  .dashboard-container {
-    padding: 8px;
-  }
-}

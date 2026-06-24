@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import "../styles/Reports.css";
-import { API_BASE_URL } from "../config/apiConfig";
+import { API_BASE_URL, getAuthHeaders, apiFetch } from "../config/apiConfig";
 
 const Reports = ({ initialReport = null }) => {
   const [activeReport, setActiveReport] = useState(initialReport || "attendance");
@@ -43,10 +43,9 @@ const Reports = ({ initialReport = null }) => {
   const fetchAttendanceReport = async () => {
     try {
       setLoading(true);
-      const url = `${API_BASE_URL}/api/attendance/by-date?fromDate=${fromDate}&toDate=${toDate}`;
-      const response = await fetch(url);
-      const result = await response.json();
-      if (result.success && result.data) {
+      const url = `/api/attendance/by-date?fromDate=${fromDate}&toDate=${toDate}`;
+      const result = await apiFetch(url);
+      if (result && result.success && result.data) {
         const expandedData = result.data.map((record) => ({
           id: record.id,
           uid: record.uid || "-",
@@ -76,10 +75,9 @@ const Reports = ({ initialReport = null }) => {
   const fetchSevaReport = async () => {
     try {
       setLoading(true);
-      const url = `${API_BASE_URL}/api/seva/report?fromDate=${fromDate}&toDate=${toDate}`;
-      const response = await fetch(url);
-      const result = await response.json();
-      if (result.success && result.data) setSevaData(result.data);
+      const url = `/api/seva/report?fromDate=${fromDate}&toDate=${toDate}`;
+      const result = await apiFetch(url);
+      if (result && result.success && result.data) setSevaData(result.data);
       else setSevaData([]);
     } catch {
       setSevaData([]);
@@ -375,7 +373,7 @@ const Reports = ({ initialReport = null }) => {
                   paginatedData.map((record, index) => (
                     <tr key={record.id || index}>
                       <td>{(currentPage - 1) * itemsPerPage + index + 1}</td>
-                      <td>{record.uid || "-"}</td>
+                      <td className="uid-cell" title={record.uid}>{record.uid || "-"}</td>
                       <td className="name-cell">{record.memberName || "-"}</td>
                       <td>
                         <span className={`status-badge status-${(record.status || "").toLowerCase().replace(/\s+/g, "-")}`}>

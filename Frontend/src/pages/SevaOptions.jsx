@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import '../styles/SevaOptions.css';
-import { API_ENDPOINTS } from '../config/apiConfig';
+import { API_ENDPOINTS, getAuthHeaders, apiFetch } from '../config/apiConfig';
 
 const SevaOptions = () => {
   const [sevaOptions, setSevaOptions] = useState([]);
@@ -22,9 +22,8 @@ const SevaOptions = () => {
   const fetchSevaOptions = async () => {
     setLoading(true);
     try {
-      const response = await fetch(SEVA_MASTER_API);
-      const result = await response.json();
-      if (result.success) {
+      const result = await apiFetch(SEVA_MASTER_API);
+      if (result && result.success) {
         setSevaOptions(result.data);
       } else {
         setError('Failed to load seva options');
@@ -45,19 +44,18 @@ const SevaOptions = () => {
     setSuccess('');
 
     try {
-      const response = await fetch(SEVA_MASTER_API, {
+      const result = await apiFetch(SEVA_MASTER_API, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: newCategory, sevaName: newSevaName }),
       });
-      const result = await response.json();
-      if (result.success) {
+
+      if (result && result.success) {
         setSuccess('✓ Seva option added successfully!');
         setNewSevaName('');
         fetchSevaOptions();
         // Hide success message after 3 seconds
         setTimeout(() => setSuccess(''), 3000);
-      } else {
+      } else if (result) {
         setError(result.error || 'Failed to add seva option');
       }
     } catch (err) {
@@ -75,15 +73,14 @@ const SevaOptions = () => {
     setSuccess('');
 
     try {
-      const response = await fetch(`${SEVA_MASTER_API}/${id}`, {
-        method: 'DELETE',
+      const result = await apiFetch(`${SEVA_MASTER_API}/${id}`, {
+        method: 'DELETE'
       });
-      const result = await response.json();
-      if (result.success) {
+      if (result && result.success) {
         setSuccess('🗑️ Deleted successfully!');
         fetchSevaOptions();
         setTimeout(() => setSuccess(''), 3000);
-      } else {
+      } else if (result) {
         setError(result.error || 'Failed to delete seva option');
       }
     } catch (err) {

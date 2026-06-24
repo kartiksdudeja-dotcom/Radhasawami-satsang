@@ -9,27 +9,42 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>
 );
 
-// Register Service Worker for Push Notifications (after app renders)
-// Supports: Chrome, Firefox, Safari, Edge, Opera
+// ==============================
+// ✅ SERVICE WORKER + SUBSCRIPTION
+// ==============================
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js')
-      .then(registration => {
-        console.log('✅ Service Worker registered successfully:', registration);
-        console.log('🔔 Push notifications enabled for all browsers');
-      })
-      .catch(error => {
-        console.error('❌ Service Worker registration failed:', error);
-        console.warn('⚠️ Falling back to Notification API only (no push, but notifications will work)');
-      });
-  });
-} else {
-  console.warn('⚠️ Service Worker not supported - Notification API only');
-}
+  window.addEventListener('load', async () => {
+    try {
+      // Register SW
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      console.log('✅ SW registered');
 
-// Check Notification API support
-if ('Notification' in window) {
-  console.log('✅ Notification API supported');
-} else {
-  console.error('❌ Notifications not supported in this browser');
+      // Ask permission
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        console.log('❌ Notification permission denied');
+        return;
+      }
+
+      // Subscribe
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: "YOUR_VAPID_PUBLIC_KEY"
+      });
+
+      console.log('📡 Subscription:', subscription);
+
+      // Send to backend
+      await fetch('/api/save-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subscription)
+      });
+
+      console.log('✅ Subscription saved');
+
+    } catch (err) {
+      console.error('❌ Error:', err);
+    }
+  });
 }

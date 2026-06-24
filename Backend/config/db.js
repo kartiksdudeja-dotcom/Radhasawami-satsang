@@ -1,5 +1,6 @@
 import sql from "mssql";
 import dotenv from "dotenv";
+import { ensureTablesExist } from "./init_tables.js";
 
 dotenv.config();
 
@@ -19,6 +20,11 @@ const config = {
     trustServerCertificate: true,
     enableArithAbort: true,
     connectionTimeout: 30000,
+  },
+  pool: {
+    max: 20,
+    min: 2,
+    idleTimeoutMillis: 30000
   },
   connectionTimeout: 30000,
   requestTimeout: 30000,
@@ -53,6 +59,9 @@ export const initializeDatabase = async () => {
   try {
     const pool = await getPool();
     console.log("✅ Database initialized successfully");
+
+    // Create required tables if they don't exist
+    await ensureTablesExist();
 
     // Verify connection
     const result = await pool

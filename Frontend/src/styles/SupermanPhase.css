@@ -28,8 +28,9 @@
 
 .add-phase-btn {
   padding: 12px 24px;
-  background: var(--primary-gradient);
-  color: white;
+  background: #1e40af;
+  background: linear-gradient(135deg, #1e40af, #3b82f6);
+  color: white !important;
   border: none;
   border-radius: var(--radius-md);
   font-weight: 700;
@@ -117,8 +118,9 @@
 
 .save-btn {
   padding: 12px 32px;
-  background: var(--primary-gradient);
-  color: white;
+  background: #1e40af;
+  background: linear-gradient(135deg, #1e40af, #3b82f6);
+  color: white !important;
   border: none;
   border-radius: var(--radius-md);
   font-weight: 700;
@@ -254,11 +256,35 @@
 
 /* Responsive */
 @media (max-width: 768px) {
-  .superman-phase-container { padding: 16px; gap: var(--spacing-lg); }
-  .phase-header h1 { font-size: 1.8rem; }
-  .phase-form-card { padding: var(--spacing-lg); }
-  .phase-grid { grid-template-columns: 1fr; gap: var(--spacing-md); }
+  .superman-phase-container { padding: 12px; gap: 20px; }
+  .phase-header h1 { font-size: 1.5rem; }
+  .phase-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .add-phase-btn { width: 100%; justify-content: center; padding: 10px; }
+  .phase-form-card { padding: 16px; }
+  .phase-grid { grid-template-columns: 1fr; gap: 12px; }
   .save-btn { width: 100%; }
-  .phases-list-section { padding: 12px; }
-  .phase-table th, .phase-table td { padding: 12px 8px; font-size: 0.8rem; }
+  .phases-list-section { padding: 8px; }
+  
+  .phase-table th, .phase-table td { 
+    padding: 10px 4px; 
+    font-size: 0.72rem; 
+  }
+  
+  .age-badge {
+    padding: 2px 6px;
+    font-size: 0.65rem;
+    white-space: nowrap;
+    display: inline-block;
+  }
+  
+  .action-buttons {
+    gap: 6px;
+  }
+  
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 0.9rem;
+    border-radius: 6px;
+  }
 }

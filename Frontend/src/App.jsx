@@ -32,6 +32,10 @@ function App() {
     setUser(null);
     localStorage.removeItem('user');
     localStorage.removeItem('is_admin');
+    localStorage.removeItem('token');
+    localStorage.removeItem('tokenjwt');
+    localStorage.removeItem('userID');
+    localStorage.removeItem('satsangCategories'); // Optional: Clear recent config too
   };
 
   return (

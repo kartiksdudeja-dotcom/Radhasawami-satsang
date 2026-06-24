@@ -77,6 +77,38 @@
   margin: 4px 0 0;
 }
 
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.admin-refresh-btn {
+  background: white;
+  border: 1px solid var(--admin-gray-200);
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--admin-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-refresh-btn:hover {
+  background: var(--admin-primary-light);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.admin-refresh-btn:active {
+  transform: translateY(0);
+}
+
 .admin-tabs {
   display: flex;
   gap: 8px;

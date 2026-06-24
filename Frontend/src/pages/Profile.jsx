@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, memo, useCallback } from "react";
 import "../styles/Profile.css";
-import { API_BASE_URL } from "../config/apiConfig";
+import { API_BASE_URL, getAuthHeaders, apiFetch } from "../config/apiConfig";
 
 // Icons components (Lucide-style SVG icons)
 const Icon = ({ name, size = 16 }) => {
@@ -123,10 +123,9 @@ const Profile = ({ user, onProfileComplete }) => {
     try {
       setLoading(true);
       setError("");
-      const response = await fetch(`${API_BASE_URL}/api/profile/${user?.id}`);
-      const result = await response.json();
+      const result = await apiFetch(`/api/profile/${user?.id}`);
       
-      if (result.success) {
+      if (result && result.success) {
         setProfileData(result.data);
         setFormData({
           email: result.data.email || "",
@@ -152,7 +151,7 @@ const Profile = ({ user, onProfileComplete }) => {
         if (!result.data.is_profile_complete) {
           setIsEditMode(true);
         }
-      } else {
+      } else if (result) {
         setError(result.error || "Failed to load profile");
       }
     } catch (err) {
@@ -176,13 +175,17 @@ const Profile = ({ user, onProfileComplete }) => {
       setError("");
       const uploadData = new FormData();
       uploadData.append("photo", file);
-      const response = await fetch(`${API_BASE_URL}/api/profile/${user?.id}/photo`, { method: "POST", body: uploadData });
-      const result = await response.json();
-      if (result.success) {
+      
+      const result = await apiFetch(`/api/profile/${user?.id}/photo`, { 
+        method: "POST", 
+        body: uploadData
+      });
+
+      if (result && result.success) {
         setSuccess("Profile photo updated!");
         setProfileData((prev) => ({ ...prev, photo: result.photo }));
         setTimeout(() => setSuccess(""), 3000);
-      } else {
+      } else if (result) {
         setError(result.error || "Failed to upload photo");
       }
     } catch (err) {
@@ -223,17 +226,15 @@ const Profile = ({ user, onProfileComplete }) => {
       setSaving(true);
       setError("");
       const endpoint = profileData?.is_profile_complete 
-        ? `${API_BASE_URL}/api/profile/${user?.id}`
-        : `${API_BASE_URL}/api/profile/${user?.id}/complete`;
+        ? `/api/profile/${user?.id}`
+        : `/api/profile/${user?.id}/complete`;
 
-      const response = await fetch(endpoint, {
+      const result = await apiFetch(endpoint, {
         method: profileData?.is_profile_complete ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: formData,
       });
-      const result = await response.json();
 
-      if (result.success) {
+      if (result && result.success) {
         setSuccess(profileData?.is_profile_complete ? "Profile updated!" : "🎉 Profile completed!");
         setProfileData((prev) => ({ ...prev, ...formData, is_profile_complete: true }));
         setIsEditMode(false);
@@ -246,7 +247,7 @@ const Profile = ({ user, onProfileComplete }) => {
           setTimeout(() => window.location.reload(), 1500);
         }
         setTimeout(() => setSuccess(""), 3000);
-      } else {
+      } else if (result) {
         setError(result.error || "Failed to save");
       }
     } catch (err) {

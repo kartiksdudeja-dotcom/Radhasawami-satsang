@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "../styles/SupermanPhase.css";
-import { API_ENDPOINTS } from "../config/apiConfig";
+import { API_ENDPOINTS, getAuthHeaders, apiFetch } from "../config/apiConfig";
 
 const API_URL = API_ENDPOINTS.SUPERMAN_PHASES;
 
@@ -23,9 +23,8 @@ const SupermanPhase = () => {
   const fetchPhases = async () => {
     try {
       setLoading(true);
-      const response = await fetch(API_URL);
-      const result = await response.json();
-      if (result.success) {
+      const result = await apiFetch(API_URL);
+      if (result && result.success) {
         setPhases(result.data);
       }
     } catch (error) {
@@ -65,14 +64,12 @@ const SupermanPhase = () => {
       const method = editingId ? "PUT" : "POST";
       const url = editingId ? `${API_URL}/${editingId}` : API_URL;
 
-      const response = await fetch(url, {
+      const result = await apiFetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
 
-      const result = await response.json();
-      if (result.success) {
+      if (result && result.success) {
         fetchPhases();
         resetForm();
       }
@@ -100,11 +97,10 @@ const SupermanPhase = () => {
 
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/${id}`, {
-        method: "DELETE",
+      const result = await apiFetch(`${API_URL}/${id}`, {
+        method: "DELETE"
       });
-      const result = await response.json();
-      if (result.success) {
+      if (result && result.success) {
         fetchPhases();
       }
     } catch (error) {

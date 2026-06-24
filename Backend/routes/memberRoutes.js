@@ -10,30 +10,23 @@ import {
   updateMemberPower
 } from '../controllers/memberController.js';
 
+// ✅ NEW JWT middleware
+import { verifyToken, verifyAdmin } from "../middleware/auth.js";
+
 const router = express.Router();
 
-// Get all members
-router.get('/', getAllMembers);
+// 🔐 Logged-in users
+router.get('/', verifyToken, getAllMembers);
 
-// Update member power/permissions
-router.patch('/:id/power', updateMemberPower);
+// 👑 Admin only (critical actions)
+router.patch('/:id/power', verifyToken, verifyAdmin, updateMemberPower);
+router.post('/', verifyToken, verifyAdmin, createMember);
+router.put('/:id', verifyToken, verifyAdmin, updateMember);
+router.delete('/:id', verifyToken, verifyAdmin, deleteMember);
 
-// Get family members for a specific user
-router.get('/family/:userId', getFamilyMembers);
-
-// Search members
-router.get('/search', searchMembers);
-
-// Get single member
-router.get('/:id', getMemberById);
-
-// Create member
-router.post('/', createMember);
-
-// Update member
-router.put('/:id', updateMember);
-
-// Delete member
-router.delete('/:id', deleteMember);
+// 🔐 Logged-in users (safe operations)
+router.get('/family/:userId', verifyToken, getFamilyMembers);
+router.get('/search', verifyToken, searchMembers);
+router.get('/:id', verifyToken, getMemberById);
 
 export default router;

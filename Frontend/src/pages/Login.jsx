@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import "../styles/Login.css";
 import MGRSALogo from "../assests/WhatsApp Image 2025-12-20 at 16.55.36.jpeg";
-import { API_ENDPOINTS } from "../config/apiConfig";
+import { API_ENDPOINTS, apiFetch } from "../config/apiConfig";
 
 const Login = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState("");
@@ -9,200 +9,191 @@ const Login = ({ onLoginSuccess }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [loginMode, setLoginMode] = useState("user"); // "user" or "admin"
+  const [loginMode, setLoginMode] = useState("user");
   const [isAdminDetected, setIsAdminDetected] = useState(false);
+  const [roleChecked, setRoleChecked] = useState(false);
+  const [roleChecking, setRoleChecking] = useState(false);
 
-  // Smart Role Detection - Trigger as user types (debounced)
+  // 🔍 Dynamic Role check with debounce
   useEffect(() => {
-    const timer = setTimeout(() => {
-      // Trigger check immediately if any text is entered
-      if (username.trim().length >= 1) {
-        checkUserRole(username.trim());
-      } else {
+    const checkRole = async () => {
+      const trimmedUid = username.trim();
+      if (trimmedUid.length < 1) {
         setIsAdminDetected(false);
+        setRoleChecked(false);
+        return;
       }
-    }, 400); // 400ms debounce
+
+      setRoleChecking(true);
+      try {
+        const result = await apiFetch(API_ENDPOINTS.CHECK_ROLE, {
+          method: "POST",
+          body: { username: trimmedUid },
+        });
+
+        if (result && result.success) {
+          // Check for any type of admin power (robust boolean check)
+          const isAdmin = result.isAdmin === true || result.isAdmin === 1 || String(result.isAdmin).toLowerCase() === "true";
+          const canManageAttendance = result.canManageAttendance === true || result.canManageAttendance === 1 || String(result.canManageAttendance).toLowerCase() === "true";
+          const canManageStore = result.canManageStore === true || result.canManageStore === 1 || String(result.canManageStore).toLowerCase() === "true";
+          
+          const hasPower = isAdmin || canManageAttendance || canManageStore;
+          setIsAdminDetected(hasPower);
+          if (!hasPower) {
+            setLoginMode("user");
+          }
+        } else {
+          setIsAdminDetected(false);
+          setLoginMode("user");
+        }
+        setRoleChecked(true);
+      } catch (err) {
+        console.error("Role check error:", err);
+      } finally {
+        setRoleChecking(false);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      if (username.trim()) {
+        checkRole();
+      }
+    }, 3000); // 500ms debounce
+
     return () => clearTimeout(timer);
   }, [username]);
 
-  const handleUidBlur = () => {
-    if (username.trim().length >= 1) {
-      checkUserRole(username.trim());
-    }
-  };
-
-  const checkUserRole = async (uid) => {
-    try {
-      console.log("🔍 Checking role for UID:", uid);
-      const response = await fetch(API_ENDPOINTS.CHECK_ROLE, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: uid }),
-      });
-      const result = await response.json();
-      console.log("📝 Role Check Result:", result);
-
-      /*
-       * Tasks completed:
-       * - [x] **Smart Login & Premium Branding**
-       * - [x] [BACKEND] Implement `check-role` endpoint with type-safe role check
-       * - [x] [FRONTEND] Implement Hindi/Pune branding in premium design
-       * - [x] [FRONTEND] Logic: Trigger role toggle only after UID entry
-       * - [x] [VERIFICATION] Debug logs added to ensure detection works
-       */
-      if (result.success && result.isAdmin) {
-        console.log("✅ Admin detected for:", uid);
-        setIsAdminDetected(true);
-      } else {
-        setIsAdminDetected(false);
-        setLoginMode("user"); // Force user mode if not admin
-      }
-    } catch (error) {
-      console.error("❌ Role detection error:", error);
-    }
-  };
-
+  // 🔐 LOGIN FUNCTION
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (loading) return;
+
     setError("");
     setLoading(true);
 
     try {
-      const payload = { username, password };
-      const response = await fetch(API_ENDPOINTS.LOGIN, {
+      const result = await apiFetch(API_ENDPOINTS.LOGIN, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: { username, password },
       });
 
-      const result = await response.json();
-
-      if (!result.success) {
-        setError(result.error || "Login failed");
+      if (!result || !result.success || !result.token) {
+        setError(result?.error || "Login failed. Please check your credentials.");
         setLoading(false);
+        
         return;
       }
 
-      // If in admin mode but user is not admin, deny
-      if (loginMode === "admin" && !result.user.is_admin) {
-         setError("You do not have administrative privileges.");
-         setLoading(false);
-         return;
-      }
-
-      // Important: If "user" mode is selected, we force is_admin to false 
-      // even if the user is actually an admin in the database.
-      const effectiveUser = {
+      const user = { 
         ...result.user,
-        is_admin: loginMode === "admin" && result.user.is_admin
+        loginMode: loginMode 
       };
 
-      // Store user data
-      localStorage.setItem("user", JSON.stringify(effectiveUser));
-      localStorage.setItem("is_admin", effectiveUser.is_admin);
+      localStorage.clear();
+      localStorage.setItem("token", result.token);
+      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("is_admin", user.loginMode === "admin" && user.is_admin);
+      localStorage.setItem("loginMode", loginMode);
 
       if (onLoginSuccess) {
-        onLoginSuccess(effectiveUser);
+        onLoginSuccess(user);
       }
-    } catch (error) {
-      setError("Connection failure. Is the backend running?");
+    } catch (err) {
+      console.error(err);
+      setError("Connection failure. Please ensure the backend is running.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
+    <div className="login-page">
+      
+      <div className="login-header">
+        <h1 className="hindi-title">रा–धा / धः–स्व–आ–मी</h1>
+        <p className="branch-subtitle">Pune Branch MGRSA</p>
+         <img src={MGRSALogo} alt="Logo" className="brand-logo" />
+        <h1 className="hindi-title">Log in</h1>
+        <p className="signin-txt">Sign in to your account</p>
+         <div>
+      </div>
+      
+
+      </div>
     <div className="login-wrapper">
-      <div className="login-card">
-        {/* Left Branding Section - Glassmorphic */}
-        <div className="login-brand">
-          <div className="brand-content">
-            <img src={MGRSALogo} alt="Radha Swami" className="brand-logo" />
-            <h1 className="brand-title">रा–धा / धः–स्व–आ–मी</h1>
-            <p className="brand-subtitle">Pune Branch</p>
-            <div className="brand-desc-container">
-              <p className="brand-desc">
-                "प्रेम ही प्रेम है, और प्रेम ही परमात्मा है।"
-              </p>
-              <p className="brand-desc" style={{marginTop: '12px', fontSize: '0.85rem', opacity: 0.7}}>
-                Dedicated to the spiritual upliftment and service of humanity.
-              </p>
+      <div className="login-card-v2">
+          <div className="language-selector">
+            <p className="language-label">Language</p>
+            <div className="language-buttons">
+              <button className="language-option">English</button>
+              <button className="language-option">हिन्दी</button>
+              <button className="language-option">मराठी</button>
             </div>
+              <form onSubmit={handleLogin} className="login-form-v2">
+          {error && <div className="error-message-v2">{error}</div>}
+
+          {/* Admin Toggle */}
+          {isAdminDetected && (
+            <div className="login-mode-toggle-v2">
+              <button
+                type="button"
+                className={loginMode === "user" ? "active" : ""}
+                onClick={() => setLoginMode("user")}
+              >
+                User
+              </button>
+              <button
+                type="button"
+                className={loginMode === "admin" ? "active" : ""}
+                onClick={() => setLoginMode("admin")}
+              >
+                Admin
+              </button>
+            </div>
+          )}
+
+          <div className="input-field-v2">
+            <input
+              type="text"
+              placeholder="Unique Identifier (UID)"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+            />
+            {roleChecking && <div className="role-checking-mini">Checking...</div>}
           </div>
-        </div>
 
-        {/* Right Form Section */}
-        <div className="login-form-container">
-          <div className="login-form-header">
-            <h2>Welcome Back</h2>
-            <p>Please enter your credentials to access the portal</p>
-          </div>
-
-          <form className="login-form" onSubmit={handleLogin}>
-            {error && <div className="error-message">{error}</div>}
-
-            {/* Smart Mode Toggle */}
-            {isAdminDetected && (
-              <div className="login-mode-toggle">
-                <button 
-                  type="button"
-                  className={loginMode === 'user' ? 'active' : ''}
-                  onClick={() => setLoginMode('user')}
-                >
-                  User
-                </button>
-                <button 
-                  type="button"
-                  className={loginMode === 'admin' ? 'active' : ''}
-                  onClick={() => setLoginMode('admin')}
-                >
-                  Admin
-                </button>
-              </div>
-            )}
-
-            <div className="input-group">
-              <label htmlFor="username">User ID (UID)</label>
+          <div className="input-field-v2">
+            <div className="password-wrapper-v2">
               <input
-                id="username"
-                type="text"
-                placeholder="Enter your UID"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                onBlur={handleUidBlur}
+                type={showPassword ? "text" : "password"}
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 required
-                disabled={loading}
-                autoComplete="off"
               />
+              <button
+                type="button"
+                className="toggle-eye-v2"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? "👁️" : "👁️‍🗨️"}
+              </button>
             </div>
+          </div>
 
-            <div className="input-group">
-              <label htmlFor="password">Password</label>
-              <div className="password-input-wrapper">
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={loading}
-                />
-                <button 
-                  type="button" 
-                  className="toggle-password" 
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? "👁️" : "👁️‍🗨️"}
-                </button>
-              </div>
-            </div>
+          <button type="submit" className="submit-btn-v2" disabled={loading}>
+            {loading ? "Signing in..." : (
+              <>
+                Log in
+              </>
+            )}
+          </button>
+        </form>
+          </div>
+          </div>
 
-            <button type="submit" className="submit-btn" disabled={loading}>
-              {loading ? "Logging in..." : "Login"}
-            </button>
-          </form>
-        </div>
+      
       </div>
     </div>
   );

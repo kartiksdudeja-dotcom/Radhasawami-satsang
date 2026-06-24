@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "../styles/Members.css";
-import { API_ENDPOINTS } from "../config/apiConfig";
+import { API_ENDPOINTS, getAuthHeaders, apiFetch } from "../config/apiConfig";
 
 const API_URL = API_ENDPOINTS.MEMBERS;
 
@@ -26,11 +26,9 @@ const Members = () => {
     try {
       setLoading(true);
       console.log("🔄 Fetching members from:", API_URL);
-      const response = await fetch(API_URL);
-      console.log("📡 Response status:", response.status);
-      const result = await response.json();
-      console.log("✅ API Response:", result);
-      if (result.success) {
+      const result = await apiFetch(API_URL);
+      
+      if (result && result.success) {
         // Filter duplicates based on UID and name (frontend safety check)
         const uniqueMembers = [];
         const seen = new Set();
@@ -52,9 +50,6 @@ const Members = () => {
       }
     } catch (error) {
       console.error("Error fetching members:", error);
-      alert(
-        "Failed to load members. Make sure backend is running on localhost:5000"
-      );
     } finally {
       setLoading(false);
     }
@@ -67,12 +62,13 @@ const Members = () => {
 
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/${id}`, { method: "DELETE" });
-      const result = await response.json();
+      const result = await apiFetch(`${API_URL}/${id}`, { 
+        method: "DELETE"
+      });
 
-      if (result.success) {
+      if (result && result.success) {
         await fetchMembers();
-      } else {
+      } else if (result) {
         alert(result.error || "Delete failed");
       }
     } catch (error) {

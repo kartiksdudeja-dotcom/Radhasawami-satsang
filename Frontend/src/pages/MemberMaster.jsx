@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "../styles/MemberMaster.css";
-import { API_ENDPOINTS } from "../config/apiConfig";
+import { API_ENDPOINTS, getAuthHeaders, apiFetch } from "../config/apiConfig";
 
 const API_URL = API_ENDPOINTS.MEMBERS;
 
@@ -54,6 +54,59 @@ const MemberMaster = () => {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [phases, setPhases] = useState([]);
+
+  useEffect(() => {
+    fetchMembers();
+    fetchPhases();
+  }, []);
+
+  const fetchPhases = async () => {
+    try {
+      const result = await apiFetch(API_ENDPOINTS.SUPERMAN_PHASES);
+      if (result && result.success) {
+        setPhases(result.data);
+      }
+    } catch (error) {
+      console.error("Error fetching phases:", error);
+    }
+  };
+
+  const fetchMembers = async () => {
+    try {
+      console.log("Fetching members from:", API_URL);
+      setLoading(true);
+      const result = await apiFetch(API_URL);
+      console.log("Fetch result:", result);
+      if (result && result.success) {
+        // Filter duplicates based on UID and name (frontend safety check)
+        const uniqueMembers = [];
+        const seen = new Set();
+
+        for (const member of result.data) {
+          const key = `${(member.uid || "NO_UID").toUpperCase()}|${(
+            member.name || "NO_NAME"
+          ).toUpperCase()}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            uniqueMembers.push(member);
+          }
+        }
+
+        console.log(
+          `Members loaded: ${result.data.length}, unique: ${uniqueMembers.length}`
+        );
+        setMembers(uniqueMembers);
+      } else if (result) {
+        console.error("API returned error:", result.error);
+      }
+    } catch (error) {
+      console.error("Error fetching members:", error);
+      alert("Failed to load members: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const [formData, setFormData] = useState({
     branch: "",
     region: "",
@@ -84,23 +137,6 @@ const MemberMaster = () => {
     office_address: "",
   });
 
-  useEffect(() => {
-    fetchMembers();
-    fetchPhases();
-  }, []);
-
-  const fetchPhases = async () => {
-    try {
-      const response = await fetch(API_ENDPOINTS.SUPERMAN_PHASES);
-      const result = await response.json();
-      if (result.success) {
-        setPhases(result.data);
-      }
-    } catch (error) {
-      console.error("Error fetching phases:", error);
-    }
-  };
-
   // Auto-calculate status based on age whenever DOB changes
   useEffect(() => {
     if (formData.dob && phases.length > 0) {
@@ -121,44 +157,6 @@ const MemberMaster = () => {
       }
     }
   }, [formData.dob, phases]);
-
-  const fetchMembers = async () => {
-    try {
-      console.log("Fetching members from:", API_URL);
-      setLoading(true);
-      const response = await fetch(API_URL);
-      console.log("Response status:", response.status);
-      const result = await response.json();
-      console.log("Fetch result:", result);
-      if (result.success) {
-        // Filter duplicates based on UID and name (frontend safety check)
-        const uniqueMembers = [];
-        const seen = new Set();
-
-        for (const member of result.data) {
-          const key = `${(member.uid || "NO_UID").toUpperCase()}|${(
-            member.name || "NO_NAME"
-          ).toUpperCase()}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            uniqueMembers.push(member);
-          }
-        }
-
-        console.log(
-          `Members loaded: ${result.data.length}, unique: ${uniqueMembers.length}`
-        );
-        setMembers(uniqueMembers);
-      } else {
-        console.error("API returned error:", result.error);
-      }
-    } catch (error) {
-      console.error("Error fetching members:", error);
-      alert("Failed to load members: " + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -211,16 +209,13 @@ const MemberMaster = () => {
       const url = editingId ? `${API_URL}/${editingId}` : API_URL;
       const method = editingId ? "PUT" : "POST";
 
-      const response = await fetch(url, {
+      const result = await apiFetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
 
-      const result = await response.json();
-
-      if (!result.success) {
-        alert(result.error || "Operation failed");
+      if (!result || !result.success) {
+        alert(result?.error || "Operation failed");
         return;
       }
 
@@ -301,16 +296,15 @@ const MemberMaster = () => {
 
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/${memberId}`, {
+      const result = await apiFetch(`${API_URL}/${memberId}`, {
         method: "DELETE",
       });
-      const result = await response.json();
 
-      if (result.success) {
+      if (result && result.success) {
         await fetchMembers();
         resetForm();
         setEditingId(null);
-      } else {
+      } else if (result) {
         alert(result.error || "Delete failed");
       }
     } catch (error) {
@@ -347,11 +341,11 @@ const MemberMaster = () => {
           </h2>
           <div className="header-actions">
             {isFormExpanded && (
-              <button className="back-btn" onClick={handleCloseForm} title="Close Form" style={{width: 32, height: 32, fontSize: '0.9rem'}}>
+              <button className="close-form-btn" onClick={handleCloseForm} title="Close Form">
                 ✕
               </button>
             )}
-            <button className="save-btn" onClick={handleAddNew} style={{padding: '8px 16px', fontSize: '0.9rem'}}>
+            <button className="save-btn" onClick={handleAddNew}>
               + Add New
             </button>
           </div>
@@ -586,8 +580,8 @@ const MemberMaster = () => {
                   <td><span className={`gender-badge ${member.gender?.toLowerCase()}`}>{member.gender}</span></td>
                   <td><span className={`status-badge ${member.status?.toLowerCase().replace(' ', '-')}`}>{member.status}</span></td>
                   <td className="action-cell">
-                    <button className="back-btn" onClick={() => handleEdit(member)} style={{width: 32, height: 32, fontSize: '0.8rem', marginRight: 8}}>✏️</button>
-                    <button className="back-btn" onClick={() => handleDeleteMember(member.id)} style={{width: 32, height: 32, fontSize: '0.8rem', color: '#f43f5e'}}>🗑️</button>
+                    <button className="table-action-btn" onClick={() => handleEdit(member)} title="Edit Member">✏️</button>
+                    <button className="table-action-btn delete" onClick={() => handleDeleteMember(member.id)} title="Delete Member">🗑️</button>
                   </td>
                 </tr>
               ))}

@@ -11,6 +11,9 @@ import {
   checkProfileStatus 
 } from "../controllers/profileController.js";
 
+// ✅ NEW JWT middleware
+import { verifyToken, verifyAdmin } from "../middleware/auth.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -22,7 +25,7 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Configure multer for photo uploads
+// Configure multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
@@ -46,14 +49,22 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-// Routes
-router.get("/:id", getProfile);
-router.get("/:id/status", checkProfileStatus);
-router.post("/:id/photo", upload.single("photo"), updateProfilePhoto);
-router.put("/:id", updateProfileDetails);
-router.post("/:id/complete", completeProfile);
+
+// 🔐 Logged-in user (can access own profile)
+router.get("/:id", verifyToken, getProfile);
+router.get("/:id/status", verifyToken, checkProfileStatus);
+
+// 🔐 Upload profile photo (user must be logged in)
+router.post("/:id/photo", verifyToken, upload.single("photo"), updateProfilePhoto);
+
+// 🔐 Update own profile
+router.put("/:id", verifyToken, updateProfileDetails);
+router.post("/:id/complete", verifyToken, completeProfile);
+
+// 👑 (Optional) Admin-only override routes (if needed)
+// router.put("/:id/admin", verifyToken, verifyAdmin, updateProfileDetails);
 
 export default router;
