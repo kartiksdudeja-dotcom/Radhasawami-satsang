@@ -1,247 +1,367 @@
-/* ====== MODERN PREMIUM BLUE & WHITE SEVA OPTIONS ====== */
+/* ====== Admin Theme Seva Options ====== */
 
 .seva-options-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: var(--spacing-lg);
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
+  gap: 24px;
+  min-height: 100vh;
+  background: #fff7f0;
   animation: fadeIn 0.5s ease-out;
 }
 
-/* Header Section */
 .seva-options-header {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
+  color: white;
+  border-radius: 24px;
+  padding: 24px 28px;
+  box-shadow: 0 18px 32px rgba(249, 115, 22, 0.15);
 }
 
 .seva-options-header h1 {
-  color: var(--primary);
-  font-size: 2.2rem;
-  letter-spacing: -0.5px;
+  margin: 0;
+  font-size: 2rem;
 }
 
 .seva-options-header .subtitle {
-  color: var(--text-muted);
-  font-weight: 500;
-  font-size: 1.1rem;
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1rem;
+  line-height: 1.6;
 }
 
-/* Form Section */
+.seva-options-content {
+  display: grid;
+  grid-template-columns: minmax(300px, 420px) 1fr;
+  gap: 24px;
+}
+
+.add-option-card,
+.options-list-container {
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 24px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+  padding: 26px;
+}
+
 .add-option-card {
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-xl);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-md);
-  transition: var(--transition);
+  position: relative;
 }
 
-.add-option-card:hover {
-  box-shadow: var(--shadow-lg);
-  border-color: var(--primary-light);
+.add-option-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 40%);
+  pointer-events: none;
 }
 
 .add-option-card h3 {
-  margin-bottom: var(--spacing-lg);
-  color: var(--text-main);
+  margin: 0 0 22px 0;
+  color: #1d4ed8;
+  font-size: 1.15rem;
   font-weight: 700;
-  font-size: 1.25rem;
 }
 
 .seva-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--spacing-lg);
-  align-items: flex-end;
+  grid-template-columns: 1fr;
+  gap: 18px;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .form-group label {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text-main);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
 }
 
 .input-field {
   width: 100%;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid #dbeafe;
+  background: #f8fbff;
+  color: #0f172a;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+  background: white;
 }
 
 .btn-primary {
-  background: var(--primary-gradient);
+  width: 100%;
+  background: linear-gradient(90deg, #2563eb 0%, #3b82f6 100%);
   color: white;
   border: none;
-  padding: 12px 24px;
-  border-radius: var(--radius-md);
+  padding: 14px 24px;
+  border-radius: 16px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(30, 58, 138, 0.2);
-  transition: var(--transition);
-  display: flex;
+  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.22);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 46px;
+  min-height: 50px;
 }
 
 .btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(30, 58, 138, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(59, 130, 246, 0.28);
 }
 
 .btn-primary:disabled {
-  opacity: 0.7;
+  opacity: 0.75;
   cursor: not-allowed;
 }
 
-/* Feedback Messages */
 .feedback-message {
-  padding: 12px 16px;
-  border-radius: var(--radius-md);
-  font-weight: 600;
-  font-size: 0.95rem;
-  margin-top: var(--spacing-md);
+  margin-top: 18px;
+  padding: 14px 18px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
 }
 
 .feedback-message.error {
   background: #fef2f2;
-  color: #ef4444;
+  color: #b91c1c;
   border: 1px solid #fee2e2;
 }
 
 .feedback-message.success {
-  background: #f0fdf4;
-  color: #10b981;
-  border: 1px solid #dcfce7;
-}
-
-/* Table Section */
-.options-list-container {
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-sm);
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #d1fae5;
 }
 
 .options-list-container h3 {
-  margin-bottom: var(--spacing-lg);
-  padding-left: 8px;
-  border-left: 4px solid var(--primary);
-  color: var(--text-main);
+  margin: 0 0 20px 0;
+  padding-left: 12px;
+  border-left: 4px solid #2563eb;
+  color: #2563eb;
+  font-size: 1.1rem;
   font-weight: 700;
 }
 
 .options-table-wrapper {
   overflow-x: auto;
-  border-radius: var(--radius-md);
+  border-radius: 20px;
 }
 
 .options-table {
   width: 100%;
   border-collapse: collapse;
-  text-align: left;
+  min-width: 560px;
+}
+
+.options-table th,
+.options-table td {
+  padding: 16px 18px;
 }
 
 .options-table th {
-  background: #f8fafc;
-  padding: 16px;
-  color: var(--text-muted);
-  font-weight: 700;
+  text-align: left;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.78rem;
   text-transform: uppercase;
-  font-size: 0.8rem;
-  letter-spacing: 0.05em;
-  border-bottom: 2px solid var(--border-color);
+  letter-spacing: 0.08em;
+  border-bottom: 2px solid #dbeafe;
 }
 
 .options-table td {
-  padding: 16px;
-  border-bottom: 1px solid #f1f5f9;
-  color: var(--text-main);
-  font-weight: 500;
+  border-bottom: 1px solid #eef4ff;
+  color: #0f172a;
+  font-size: 0.95rem;
 }
 
 .options-table tr:hover {
-  background-color: #f8faff;
+  background: #f8fbff;
 }
 
-/* Buttons */
+.options-table td strong {
+  color: #1e40af;
+}
+
 .btn-delete {
-  background: #fef2f2;
-  color: #ef4444;
-  border: 1px solid #fee2e2;
-  padding: 8px 16px;
-  border-radius: var(--radius-md);
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #dbeafe;
+  padding: 10px 16px;
+  border-radius: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: var(--transition);
-  display: flex;
+  transition: transform 0.2s ease, background 0.2s ease;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .btn-delete:hover {
-  background: #ef4444;
+  background: #1d4ed8;
   color: white;
-  border-color: #ef4444;
-  transform: scale(1.05);
+  border-color: #1d4ed8;
+  transform: translateY(-1px);
 }
 
 .empty-state {
   text-align: center;
-  padding: var(--spacing-2xl);
-  color: var(--text-muted);
+  padding: 32px 0;
+  color: #64748b;
 }
 
 .empty-icon {
-  font-size: 4rem;
-  opacity: 0.1;
-  margin-bottom: var(--spacing-md);
+  font-size: 3.5rem;
+  opacity: 0.14;
+  margin-bottom: 16px;
 }
 
-/* Loading Spinner placeholder */
 .loading-row {
   text-align: center;
-  padding: var(--spacing-2xl);
-  color: var(--primary);
-  font-weight: 600;
+  padding: 32px 0;
+  color: #2563eb;
+  font-weight: 700;
 }
 
-/* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .seva-options-container { padding: 10px; gap: 16px; }
-  .seva-options-header h1 { font-size: 1.25rem; }
-  .seva-options-header .subtitle { font-size: 0.82rem; }
-  .add-option-card { padding: 16px; border-radius: 12px; }
-  .add-option-card h3 { font-size: 1rem; margin-bottom: 12px; }
-  .seva-form { grid-template-columns: 1fr; gap: 12px; }
-  .form-group label { font-size: 0.78rem; }
-  .btn-primary { padding: 10px 16px; font-size: 0.88rem; min-height: 40px; border-radius: 8px; }
-  .options-list-container { padding: 10px; border-radius: 12px; }
-  .options-list-container h3 { font-size: 1rem; margin-bottom: 12px; }
-  .options-table th { padding: 10px 8px; font-size: 0.68rem; }
-  .options-table td { padding: 10px 8px; font-size: 0.78rem; }
-  .btn-delete { padding: 6px 10px; font-size: 0.78rem; border-radius: 6px; }
+@media (max-width: 980px) {
+  .seva-options-content {
+    grid-template-columns: 1fr;
+  }
 }
 
-@media (max-width: 480px) {
-  .seva-options-container { padding: 8px; }
-  .options-table th { font-size: 0.65rem; padding: 8px 6px; }
-  .options-table td { font-size: 0.75rem; padding: 8px 6px; }
+@media (max-width: 768px) {
+  .seva-options-container {
+    padding: 20px;
+  }
+
+  .seva-options-header {
+    padding: 20px 22px;
+    border-radius: 20px;
+  }
+
+  .seva-options-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .seva-options-header .subtitle {
+    font-size: 0.95rem;
+  }
+
+  .add-option-card,
+  .options-list-container {
+    padding: 22px;
+  }
+
+  .add-option-card h3 {
+    font-size: 1rem;
+    margin-bottom: 16px;
+  }
+
+  .seva-form {
+    gap: 14px;
+  }
+
+  .input-field {
+    padding: 13px 14px;
+  }
+
+  .btn-primary {
+    padding: 12px 18px;
+    font-size: 0.9rem;
+    min-height: 44px;
+    border-radius: 12px;
+  }
+
+  .options-table th,
+  .options-table td {
+    padding: 14px 12px;
+  }
+
+  .btn-delete {
+    padding: 9px 12px;
+    font-size: 0.85rem;
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 520px) {
+  .seva-options-container {
+    padding: 16px;
+  }
+
+  .options-table {
+    min-width: auto;
+  }
+
+  .options-table-wrapper {
+    overflow-x: hidden;
+  }
+
+  .options-table th,
+  .options-table td {
+    display: block;
+    width: 100%;
+    padding: 12px 14px;
+    box-sizing: border-box;
+  }
+
+  .options-table thead {
+    display: none;
+  }
+
+  .options-table tr {
+    display: block;
+    margin-bottom: 16px;
+    border-radius: 18px;
+    background: white;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+    border: 1px solid #e2e8f0;
+  }
+
+  .options-table td {
+    border: none;
+  }
+
+  .options-table td:not(:last-child) {
+    border-bottom: 1px solid #eef4ff;
+  }
+
+  .options-table td:before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .options-table td:last-child {
+    padding-bottom: 16px;
+  }
 }
